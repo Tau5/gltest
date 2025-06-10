@@ -1,0 +1,15 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/g++",
+      "-c",
+      "-Iinclude",
+      "-o",
+      "build/out",
+      "main.cpp"
+    ],
+    "directory": "/home/tau/libritos/opengl",
+    "file": "/home/tau/libritos/opengl/main.cpp",
+    "output": "/home/tau/libritos/opengl/build/out"
+  }
+]
