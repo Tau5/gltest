@@ -1,11 +1,11 @@
 use crate::camera::Camera;
-use crate::image::{load_image, load_texture};
+use crate::textures::{load_image, load_texture, MaterialStore};
 use crate::object::Object;
-use crate::objects;
+use crate::prefabs;
 use crate::player::Player;
 use crate::shader::ShaderProgram;
 use crate::vao::{TriangleArrayVAO, VAO};
-use gl::types::GLfloat;
+use gl::types::{GLfloat, GLint};
 use glfw::ffi::{
     glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwPollEvents, glfwSwapBuffers, GLFWwindow
     ,
@@ -37,6 +37,8 @@ pub struct App {
     player: Player,
     lightpoint_pos: TVec3<GLfloat>,
     light_point: TriangleArrayVAO,
+
+    material_store: MaterialStore
 }
 
 impl App {
@@ -45,7 +47,11 @@ impl App {
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+
+            //gl::ClearColor(0.2, 0.2, 0.2, 1.0);
+            gl::ClearColor(0.21, 0.64, 0.99, 1.0);
         }
+
 
         let lighting_shader = ShaderProgram::new(
             include_str!("vertex_shader.glsl"),
@@ -62,13 +68,24 @@ impl App {
             include_str!("aaab_renderer.glsl"),
         );
 
-        let light_point = objects::cube();
+        let mut material_store = MaterialStore::new("textures/fallback.png".into());
 
-        let container_specular = load_texture(load_image("textures/container2_specular.png"));
-        let container_emission = load_texture(load_image("textures/container2_emission.png"));
-        let texture = load_texture(load_image("textures/container2.png"));
+        let light_point = prefabs::cube();
 
-        let mut lightpoint_pos = glm::vec3(6.0, 0.0, -4.0);
+        material_store.load("container",
+                            Some("textures/container2.png"),
+                            Some("textures/container2_specular.png"),
+                            Some("textures/container2_emission.png"),
+                            1.0
+        ).expect("Error loading container material");
+
+        material_store.load("sand",
+            Some("textures/sand.png"), None, None, 1.0).unwrap();
+
+        material_store.load("water",
+                            Some("textures/water.png"), None, None, 16.0).unwrap();
+
+        let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
         let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
         let plane_pos = glm::vec3(8.0, -5.0, -2.0);
 
@@ -78,10 +95,8 @@ impl App {
             testcube_pos,
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(2.0, 1.0, 2.0),
-            Box::from(objects::cube()),
-            texture,
-            Some(container_specular),
-            Some(container_emission),
+            Box::from(prefabs::cube()),
+            material_store.get("container"),
             true,
         );
 
@@ -89,22 +104,51 @@ impl App {
             plane_pos,
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(10.0, 1.0, 10.0),
-            Box::from(objects::cube()),
-            texture,
-            Some(container_specular),
-            None,
+            Box::from(prefabs::cube()),
+            material_store.get("box"),
+            true,
+        );
+
+        let beach_sand = Object::new(
+            glm::vec3(0.0, -15.0, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(40.0, 0.1, 20.0),
+            Box::from(prefabs::cube()),
+            material_store.get("sand"),
+            true,
+        );
+
+        let beach_waterbed = Object::new(
+            glm::vec3(0.0, -20.0, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(70.0, 0.1, 70.0),
+            Box::from(prefabs::cube()),
+            material_store.get("sand"),
+            true,
+        );
+
+        let ocean = Object::new(
+            glm::vec3(0.0, -15.1, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(100.0, 0.1, 100.0),
+            Box::from(prefabs::cube()),
+            material_store.get("water"),
             true,
         );
 
         objects.push(container);
         objects.push(plane);
+        objects.push(beach_sand);
+        objects.push(beach_waterbed);
+        objects.push(ocean);
 
         let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
 
         let player = Player::new(camera);
 
         // Counts how many updates the mouse has made up to two (See last_x/y update at the bottom)
-        let light_color: TVec3<GLfloat> = glm::vec3(1.0, 1.0, 1.0);
+        // Qt.rgba(0.94, 0.89, 0.51, 1)
+        let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.89, 0.81);
         let diffuse_color: TVec3<GLfloat> = light_color.scale(0.5);
         let ambient_color: TVec3<GLfloat> = light_color.scale(0.2) as TVec3<f32>;
 
@@ -134,7 +178,8 @@ impl App {
             lightpoint_shader,
             aabb_shader,
             lightpoint_pos,
-            light_point
+            light_point,
+            material_store
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
@@ -229,25 +274,17 @@ impl App {
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
             }
 
-            let lightpoint_model = glm::translate(&model, &self.lightpoint_pos);
-            let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
-
-            let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
             // mat3(transpose(inverse(model)))
 
-            self.lighting_shader.load();
-            self.lighting_shader.setMat4(c"view", &view);
-            self.lighting_shader.setMat4(c"projection", &self.proj);
-
-            self.lighting_shader.setVec3(c"light.position", &self.lightpoint_pos);
-            self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
-            self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
-            self.lighting_shader.setVec3(c"light.specular", &glm::vec3(1.0, 1.0, 1.0));
-            self.lighting_shader.setVec3(c"viewPos", &self.player.get_position());
+            self.load_lighting_shader(&view);
 
             for obj in &self.objects {
                 obj.render(&self.lighting_shader);
             }
+
+            let lightpoint_model = glm::translate(&model, &self.lightpoint_pos);
+            let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
+            let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
 
             self.lightpoint_shader.load();
             self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
@@ -278,5 +315,17 @@ impl App {
             self.last_x = current_x;
             self.last_y = current_y;
         }
+    }
+
+    fn load_lighting_shader(&mut self, view: &TMat4<GLfloat>) {
+        self.lighting_shader.load();
+        self.lighting_shader.setMat4(c"view", &view);
+        self.lighting_shader.setMat4(c"projection", &self.proj);
+
+        self.lighting_shader.setVec3(c"light.vector", &self.lightpoint_pos);
+        self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
+        self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
+        self.lighting_shader.setVec3(c"light.specular", &glm::vec3(1.0, 1.0, 1.0));
+        self.lighting_shader.setVec3(c"viewPos", &self.player.get_position());
     }
 }

@@ -1,7 +1,7 @@
 mod utils;
-mod objects;
+mod prefabs;
 mod shader;
-mod image;
+mod textures;
 mod camera;
 mod object;
 mod vao;
@@ -9,27 +9,12 @@ mod player;
 mod aabb;
 mod collidable;
 mod app;
-mod TextureStore;
 
-use glfw;
-use glfw::ffi::{GLFWwindow, OPENGL_COMPAT_PROFILE, glfwCreateWindow, glfwGetKey, glfwGetProcAddress, glfwGetWindowSize, glfwInit, glfwMakeContextCurrent, glfwPollEvents, glfwSetFramebufferSizeCallback, glfwSetWindowShouldClose, glfwSwapBuffers, glfwTerminate, glfwWindowHint, glfwWindowShouldClose, glfwGetTime, glfwGetCursorPos, glfwSwapInterval, OPENGL_CORE_PROFILE, glfwGetWindowFrameSize};
-use std::ffi::{CString, c_int, c_void, c_double};
-use std::ops::Mul;
-use std::ptr;
-use std::ptr::null_mut;
-use std::time::SystemTime;
-use fastrand::f64;
-use gl::types::GLfloat;
-use nalgebra_glm as glm;
-use nalgebra_glm::{proj, TVec3};
 use crate::app::App;
-use crate::camera::Camera;
-use crate::collidable::Collidable;
-use crate::image::{load_image, load_texture};
-use crate::object::Object;
-use crate::player::Player;
-use crate::shader::ShaderProgram;
-use crate::vao::VAO;
+use glfw;
+use glfw::ffi::{glfwCreateWindow, glfwGetProcAddress, glfwGetWindowSize, glfwInit, glfwMakeContextCurrent, glfwSetFramebufferSizeCallback, glfwTerminate, glfwWindowHint, glfwWindowShouldClose, GLFWwindow, OPENGL_CORE_PROFILE};
+use std::ffi::{c_int, CString};
+use std::ptr::null_mut;
 
 extern "C" fn framebuffer_size_callback(win: *mut GLFWwindow, width: c_int, height: c_int) {
     unsafe {
@@ -113,7 +98,6 @@ fn main() {
         gl::Viewport(0, 0, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT);
 
         //glfwSwapInterval(0);
-        gl::ClearColor(0.2, 0.2, 0.2, 1.0);
 
         let mut app = App::new(window, DEFAULT_WINDOW_WIDTH as usize, DEFAULT_WINDOW_HEIGHT as usize);
 

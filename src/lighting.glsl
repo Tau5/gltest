@@ -13,7 +13,7 @@ struct Material {
 };
 
 struct Light {
-    vec3 position;
+    vec3 vector;
     vec3 ambient;
     vec3 diffuse;
     vec3 specular;
@@ -44,5 +44,5 @@ void main() {
     //vec3 result = (diffuse + ambient + specular) * objectColor;
     vec3 result = (diffuse + ambient + specular + vec3(texture(material.emission, TexCoord)));
 
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, texture(material.diffuse, TexCoord).w);
 }

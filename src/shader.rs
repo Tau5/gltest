@@ -1,6 +1,7 @@
 use std::ffi::CStr;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use crate::utils::compile_shader;
+use crate::textures::Material;
 
 pub struct ShaderProgram {
     id: GLuint,
@@ -65,5 +66,4 @@ impl ShaderProgram {
             gl::Uniform3fv(uniform_location, 1, nalgebra_glm::value_ptr(value).as_ptr());
         }
     }
-
 }

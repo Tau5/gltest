@@ -4,7 +4,7 @@ use gl::types::{GLfloat, GLsizei, GLsizeiptr, GLuint};
 use nalgebra_glm as glm;
 use glm::Vec3;
 use nalgebra_glm::vec3;
-use crate::objects;
+use crate::prefabs;
 use crate::shader::ShaderProgram;
 use crate::utils::gen_buffers;
 use crate::vao::{LineLoopVAO, TriangleArrayVAO, VAO};
@@ -63,7 +63,7 @@ impl AABB {
     }
 
     pub fn get_vao(&self) -> TriangleArrayVAO {
-        return objects::cube();
+        return prefabs::cube();
     }
 
 
