@@ -2,7 +2,7 @@ use gl::types::GLfloat;
 use crate::aabb::AABB;
 use crate::camera::Camera;
 use nalgebra_glm as glm;
-use nalgebra_glm::{scale, translate, vec3, Vec3};
+use nalgebra_glm::{scale, translate, vec3, TVec3, Vec3};
 use crate::collidable::Collidable;
 use crate::object::Object;
 
@@ -10,6 +10,12 @@ pub struct Player {
     camera: Camera,
     scale: Vec3,
     pub aabb: AABB,
+}
+
+impl Player {
+    pub(crate) fn get_front(&self) -> TVec3<GLfloat> {
+        self.camera.get_camera_front()
+    }
 }
 
 impl Player {

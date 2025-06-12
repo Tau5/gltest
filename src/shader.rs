@@ -1,5 +1,6 @@
 use std::ffi::CStr;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
+use nalgebra_glm::TVec3;
 use crate::utils::compile_shader;
 use crate::textures::Material;
 
@@ -64,6 +65,13 @@ impl ShaderProgram {
         unsafe {
             let uniform_location = gl::GetUniformLocation(self.id, uniform_name.as_ptr());
             gl::Uniform3fv(uniform_location, 1, nalgebra_glm::value_ptr(value).as_ptr());
+        }
+    }
+
+    pub fn setVec4(&self, uniform_name: &CStr, value: &nalgebra_glm::Vec4) {
+        unsafe {
+            let uniform_location = gl::GetUniformLocation(self.id, uniform_name.as_ptr());
+            gl::Uniform4fv(uniform_location, 1, nalgebra_glm::value_ptr(value).as_ptr());
         }
     }
 }

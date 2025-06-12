@@ -60,7 +60,7 @@ impl Camera {
         )
     }
 
-    fn get_camera_front(&self) -> glm::Vec3 {
+    pub fn get_camera_front(&self) -> glm::Vec3 {
         glm::normalize(&self.direction)
     }
 

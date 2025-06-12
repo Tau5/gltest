@@ -20,7 +20,7 @@ void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     FragPos = vec3(model * vec4(aPos, 1.0));
 
-    TexCoord = vec2(aTexCoord.x, -aTexCoord.y) * factor;
+    TexCoord = vec2(aTexCoord.x, aTexCoord.y) * factor;
 
     /*
      Inversing matrices is a costly operation for shaders, so wherever possible try to avoid doing inverse operations

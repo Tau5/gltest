@@ -41,8 +41,7 @@ pub fn compile_shader(shader: &str, type_: GLenum) -> GLuint {
             //.unwrap_or_else(|e| format!("(Couldn't get info log from shader {})", e));
 
         panic!("Couldn't compile shader (Error code {})\n\t{}", success, info_log);
-        panic!("Couldn't compile shader (Error code {})", success);
     }
 
-    return shader_id;
+    shader_id
 }

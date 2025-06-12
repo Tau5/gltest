@@ -80,18 +80,28 @@ impl App {
         ).expect("Error loading container material");
 
         material_store.load("sand",
-            Some("textures/sand.png"), None, None, 1.0).unwrap();
+            Some("textures/sand.png"), Some("textures/sand_spec.png"), None, 1.0).unwrap();
 
         material_store.load("water",
-                            Some("textures/water.png"), None, None, 16.0).unwrap();
+            Some("textures/water.png"), None, None, 16.0).unwrap();
 
-        let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
+        material_store.load("fogata",
+                            None, None, Some("textures/fogata.png"), 1.0).unwrap();
+
+        //let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
+        let lightpoint_pos = glm::vec3(-5.0, -12.0, -4.0);
+        let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.89, 0.81);
+        //let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.49, 0.41);
+        let diffuse_color: TVec3<GLfloat> = light_color.scale(0.5);
+        let ambient_color: TVec3<GLfloat> = light_color.scale(0.2) as TVec3<f32>;
+        
+        //let lightpoint_pos = glm::vec3(-0.0, -0.7, -0.7);
         let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
         let plane_pos = glm::vec3(8.0, -5.0, -2.0);
 
         let mut objects = Vec::new();
 
-        let mut container = Object::new(
+        let container = Object::new(
             testcube_pos,
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(2.0, 1.0, 2.0),
@@ -136,11 +146,21 @@ impl App {
             true,
         );
 
+        let fire = Object::new(
+            glm::vec3(-5.0, -13.0, -5.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(2.0, 2.0, 0.0),
+            Box::from(prefabs::cube()),
+            material_store.get("fogata"),
+            true
+        );
+
         objects.push(container);
         objects.push(plane);
         objects.push(beach_sand);
         objects.push(beach_waterbed);
         objects.push(ocean);
+        objects.push(fire);
 
         let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
 
@@ -148,9 +168,6 @@ impl App {
 
         // Counts how many updates the mouse has made up to two (See last_x/y update at the bottom)
         // Qt.rgba(0.94, 0.89, 0.51, 1)
-        let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.89, 0.81);
-        let diffuse_color: TVec3<GLfloat> = light_color.scale(0.5);
-        let ambient_color: TVec3<GLfloat> = light_color.scale(0.2) as TVec3<f32>;
 
         let proj = glm::perspective(
             width as f32 / height as f32,
@@ -254,21 +271,41 @@ impl App {
 
                 if (glfwGetKey(window, glfw::ffi::KEY_ESCAPE)) == glfw::ffi::PRESS {
                     self.paused = !self.paused;
-                    if (self.paused) {
+                    if self.paused {
                         self.mouse_change_counter = 0;
                     }
+                }
+
+
+                if (glfwGetKey(window, glfw::ffi::KEY_Z)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.x -= 0.01;
+                }
+                if (glfwGetKey(window, glfw::ffi::KEY_X)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.x += 0.01;
+                }
+                if (glfwGetKey(window, glfw::ffi::KEY_C)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.y -= 0.01;
+                }
+                if (glfwGetKey(window, glfw::ffi::KEY_V)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.y += 0.01;
+                }
+                if (glfwGetKey(window, glfw::ffi::KEY_B)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.z -= 0.01;
+                }
+                if (glfwGetKey(window, glfw::ffi::KEY_N)) == glfw::ffi::PRESS {
+                    self.lightpoint_pos.z += 0.01;
                 }
             }
 
             self.player.translate(move_x, move_z, &self.objects);
-            self.player.apply_gravity(-0.01, &self.objects);
+            self.player.apply_gravity(-0.27, &self.objects);
             self.player.rotate_camera(
                 (mouse_x * self.mouse_sensitivity) as f32,
                 -(mouse_y * self.mouse_sensitivity) as f32,
             );
             let view = self.player.get_view();
 
-            self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
+            //self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
 
             unsafe {
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
@@ -322,10 +359,22 @@ impl App {
         self.lighting_shader.setMat4(c"view", &view);
         self.lighting_shader.setMat4(c"projection", &self.proj);
 
-        self.lighting_shader.setVec3(c"light.vector", &self.lightpoint_pos);
+        //let mut light_vector = glm::vec3_to_vec4(&self.lightpoint_pos);
+        let mut light_vector = glm::vec3_to_vec4(&self.player.get_position());
+        let spotlight_direction = &self.player.get_front();
+        light_vector.w = 1.0;
+
+        self.lighting_shader.setVec4(c"light.vector", &light_vector);
         self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
         self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
-        self.lighting_shader.setVec3(c"light.specular", &glm::vec3(1.0, 1.0, 1.0));
+        self.lighting_shader.setVec3(c"light.specular", &self.diffuse_color);
+        self.lighting_shader.setFloat(c"light.constant", 1.0);
+        self.lighting_shader.setFloat(c"light.linear", 0.045);
+        self.lighting_shader.setFloat(c"light.quadratic", 0.0075);
+        self.lighting_shader.setVec3(c"light.spotlightDirection", &spotlight_direction);
+        self.lighting_shader.setFloat(c"light.spAngleInner", f32::cos(0.21));
+        self.lighting_shader.setFloat(c"light.spAngleOuter", f32::cos(0.27));
+
         self.lighting_shader.setVec3(c"viewPos", &self.player.get_position());
     }
 }
