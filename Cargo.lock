@@ -676,6 +676,7 @@ dependencies = [
  "image",
  "log",
  "nalgebra-glm",
+ "thiserror",
 ]
 
 [[package]]

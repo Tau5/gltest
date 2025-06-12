@@ -10,3 +10,4 @@ image = { version = "0.25.6", features = ["default"] }
 nalgebra-glm = "0.19.0"
 fastrand = "2.3.0"
 log = "0.4.27"
+thiserror = "1.0.69"
