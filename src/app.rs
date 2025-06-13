@@ -1,14 +1,14 @@
 use crate::camera::Camera;
-use crate::textures::{load_image, load_texture, MaterialStore};
+use crate::lighting::{DirLight, LightManager, SpotLight};
 use crate::object::Object;
-use crate::prefabs;
 use crate::player::Player;
+use crate::prefabs;
 use crate::shader::ShaderProgram;
+use crate::textures::{MaterialStore, load_image, load_texture};
 use crate::vao::{TriangleArrayVAO, VAO};
 use gl::types::{GLfloat, GLint};
 use glfw::ffi::{
-    glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwPollEvents, glfwSwapBuffers, GLFWwindow
-    ,
+    GLFWwindow, glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwPollEvents, glfwSwapBuffers,
 };
 use nalgebra_glm as glm;
 use nalgebra_glm::{TMat4, TVec3};
@@ -30,15 +30,12 @@ pub struct App {
     paused: bool,
     selected_obj: usize,
     proj: TMat4<f32>,
-    ambient_color: TVec3<GLfloat>,
-    diffuse_color: TVec3<GLfloat>,
-    light_color: TVec3<GLfloat>,
     mouse_change_counter: i32,
     player: Player,
-    lightpoint_pos: TVec3<GLfloat>,
-    light_point: TriangleArrayVAO,
 
-    material_store: MaterialStore
+    material_store: MaterialStore,
+    light_manager: LightManager,
+    pub lamp_vao: TriangleArrayVAO,
 }
 
 impl App {
@@ -51,7 +48,6 @@ impl App {
             //gl::ClearColor(0.2, 0.2, 0.2, 1.0);
             gl::ClearColor(0.21, 0.64, 0.99, 1.0);
         }
-
 
         let lighting_shader = ShaderProgram::new(
             include_str!("vertex_shader.glsl"),
@@ -68,65 +64,71 @@ impl App {
             include_str!("aaab_renderer.glsl"),
         );
 
+        let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
+        let player = Player::new(camera);
+
         let mut material_store = MaterialStore::new("textures/fallback.png".into());
-
-        let light_point = prefabs::cube();
-
-        material_store.load("container",
-                            Some("textures/container2.png"),
-                            Some("textures/container2_specular.png"),
-                            Some("textures/container2_emission.png"),
-                            1.0
-        ).expect("Error loading container material");
-
-        material_store.load("sand",
-            Some("textures/sand.png"), Some("textures/sand_spec.png"), None, 1.0).unwrap();
-
-        material_store.load("water",
-            Some("textures/water.png"), None, None, 16.0).unwrap();
-
-        material_store.load("fogata",
-                            None, None, Some("textures/fogata.png"), 1.0).unwrap();
-
-        //let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
         let lightpoint_pos = glm::vec3(-5.0, -12.0, -4.0);
         let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.89, 0.81);
         //let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.49, 0.41);
         let diffuse_color: TVec3<GLfloat> = light_color.scale(0.5);
         let ambient_color: TVec3<GLfloat> = light_color.scale(0.2) as TVec3<f32>;
-        
+
+        let spotlight = SpotLight::new(
+            player.get_position(),
+            player.get_front(),
+            0.21,
+            0.27,
+            ambient_color,
+            diffuse_color,
+            diffuse_color,
+        );
+
+        let mut light_manager = LightManager::new(
+            4,
+            DirLight::new(
+                lightpoint_pos,
+                ambient_color,
+                diffuse_color,
+                diffuse_color
+            ),
+            Some(spotlight),
+        );
+
+        let lamp_vao = prefabs::cube();
+
+        material_store
+            .load(
+                "container",
+                Some("textures/container2.png"),
+                Some("textures/container2_specular.png"),
+                Some("textures/container2_emission.png"),
+                1.0,
+            )
+            .expect("Error loading container material");
+
+        material_store
+            .load(
+                "sand",
+                Some("textures/sand.png"),
+                Some("textures/sand_spec.png"),
+                None,
+                1.0,
+            )
+            .unwrap();
+
+        material_store
+            .load("water", Some("textures/water.png"), None, None, 16.0)
+            .unwrap();
+
+        material_store
+            .load("fogata", None, None, Some("textures/fogata.png"), 1.0)
+            .unwrap();
+
+        //let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
         //let lightpoint_pos = glm::vec3(-0.0, -0.7, -0.7);
-        let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
-        let plane_pos = glm::vec3(8.0, -5.0, -2.0);
-
-        let mut objects = Vec::new();
-
-        let container = Object::new(
-            testcube_pos,
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(2.0, 1.0, 2.0),
-            Box::from(prefabs::cube()),
-            material_store.get("container"),
-            true,
-        );
-
-        let plane = Object::new(
-            plane_pos,
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(10.0, 1.0, 10.0),
-            Box::from(prefabs::cube()),
-            material_store.get("box"),
-            true,
-        );
 
         let objects = Self::generate_objects(&mut material_store);
-
-        let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
-
-        let player = Player::new(camera);
-
-        // Counts how many updates the mouse has made up to two (See last_x/y update at the bottom)
-        // Qt.rgba(0.94, 0.89, 0.51, 1)
 
         let proj = glm::perspective(
             width as f32 / height as f32,
@@ -145,17 +147,14 @@ impl App {
             paused: false,
             selected_obj: 0,
             player,
-            light_color,
-            diffuse_color,
-            ambient_color,
             proj,
             objects,
             lighting_shader,
             lightpoint_shader,
             aabb_shader,
-            lightpoint_pos,
-            light_point,
-            material_store
+            material_store,
+            light_manager,
+            lamp_vao,
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
@@ -217,7 +216,7 @@ impl App {
             glm::vec3(2.0, 2.0, 0.0),
             Box::from(prefabs::cube()),
             material_store.get("fogata"),
-            true
+            true,
         );
 
         objects.push(container);
@@ -263,7 +262,7 @@ impl App {
             let mut move_z: f32 = 0.0;
 
             unsafe {
-                if (!self.paused) {
+                if !self.paused {
                     if glfwGetKey(window, glfw::ffi::KEY_D) == glfw::ffi::PRESS {
                         move_x += self.camera_speed
                     }
@@ -304,25 +303,27 @@ impl App {
                     }
                 }
 
+                if let Some(light) = self.light_manager.get_mut_pointlight(0) {
+                    if (glfwGetKey(window, glfw::ffi::KEY_Z)) == glfw::ffi::PRESS {
+                        light.position.x -= 0.01;
+                    }
+                    if (glfwGetKey(window, glfw::ffi::KEY_X)) == glfw::ffi::PRESS {
+                        light.position.x += 0.01;
+                    }
+                    if (glfwGetKey(window, glfw::ffi::KEY_C)) == glfw::ffi::PRESS {
+                        light.position.y -= 0.01;
+                    }
+                    if (glfwGetKey(window, glfw::ffi::KEY_V)) == glfw::ffi::PRESS {
+                        light.position.y += 0.01;
+                    }
+                    if (glfwGetKey(window, glfw::ffi::KEY_B)) == glfw::ffi::PRESS {
+                        light.position.z -= 0.01;
+                    }
+                    if (glfwGetKey(window, glfw::ffi::KEY_N)) == glfw::ffi::PRESS {
+                        light.position.z += 0.01;
+                    }
+                }
 
-                if (glfwGetKey(window, glfw::ffi::KEY_Z)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.x -= 0.01;
-                }
-                if (glfwGetKey(window, glfw::ffi::KEY_X)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.x += 0.01;
-                }
-                if (glfwGetKey(window, glfw::ffi::KEY_C)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.y -= 0.01;
-                }
-                if (glfwGetKey(window, glfw::ffi::KEY_V)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.y += 0.01;
-                }
-                if (glfwGetKey(window, glfw::ffi::KEY_B)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.z -= 0.01;
-                }
-                if (glfwGetKey(window, glfw::ffi::KEY_N)) == glfw::ffi::PRESS {
-                    self.lightpoint_pos.z += 0.01;
-                }
             }
 
             self.player.translate(move_x, move_z, &self.objects);
@@ -347,18 +348,23 @@ impl App {
                 obj.render(&self.lighting_shader);
             }
 
-            let lightpoint_model = glm::translate(&model, &self.lightpoint_pos);
-            let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
-            let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
 
             self.lightpoint_shader.load();
-            self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
             self.lightpoint_shader.setMat4(c"view", &view);
             self.lightpoint_shader.setMat4(c"projection", &self.proj);
-            self.lightpoint_shader.setMat3(c"normalMatrix", &testcube_normal);
-            self.lightpoint_shader.setVec3(c"color", &self.light_color);
 
-            self.light_point.render();
+            for light in self.light_manager.iter() {
+                let lightpoint_model = glm::translate(&model, &light.position);
+                let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
+                let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
+
+                self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
+                self.lightpoint_shader
+                    .setMat3(c"normalMatrix", &testcube_normal);
+                self.lightpoint_shader.setVec3(c"color", &light.diffuse);
+
+                self.lamp_vao.render();
+            }
 
             self.aabb_shader.load();
             self.aabb_shader.setMat4(c"view", &view);
@@ -373,7 +379,9 @@ impl App {
                 glfwPollEvents();
             }
 
-            if (self.mouse_change_counter < 3) && ((self.last_x != current_x) || (self.last_y != current_y)) {
+            if (self.mouse_change_counter < 3)
+                && ((self.last_x != current_x) || (self.last_y != current_y))
+            {
                 self.mouse_change_counter += 1;
             }
 
@@ -386,23 +394,30 @@ impl App {
         self.lighting_shader.load();
         self.lighting_shader.setMat4(c"view", &view);
         self.lighting_shader.setMat4(c"projection", &self.proj);
+        self.lighting_shader
+            .setVec3(c"viewPos", &self.player.get_position());
 
-        //let mut light_vector = glm::vec3_to_vec4(&self.lightpoint_pos);
-        let mut light_vector = glm::vec3_to_vec4(&self.player.get_position());
-        let spotlight_direction = &self.player.get_front();
-        light_vector.w = 1.0;
+        if let Some(spot_light) = &mut self.light_manager.spot_light {
+            spot_light.position = self.player.get_position();
+            spot_light.direction = self.player.get_front();
+        }
 
-        self.lighting_shader.setVec4(c"light.vector", &light_vector);
-        self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
-        self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
-        self.lighting_shader.setVec3(c"light.specular", &self.diffuse_color);
-        self.lighting_shader.setFloat(c"light.constant", 1.0);
-        self.lighting_shader.setFloat(c"light.linear", 0.045);
-        self.lighting_shader.setFloat(c"light.quadratic", 0.0075);
-        self.lighting_shader.setVec3(c"light.spotlightDirection", &spotlight_direction);
-        self.lighting_shader.setFloat(c"light.spAngleInner", f32::cos(0.21));
-        self.lighting_shader.setFloat(c"light.spAngleOuter", f32::cos(0.27));
+        self.light_manager.load_lights(&self.lighting_shader);
 
-        self.lighting_shader.setVec3(c"viewPos", &self.player.get_position());
+        ////let mut light_vector = glm::vec3_to_vec4(&self.lightpoint_pos);
+        //let mut light_vector = glm::vec3_to_vec4(&self.player.get_position());
+        //let spotlight_direction = &self.player.get_front();
+        //light_vector.w = 1.0;
+
+        //self.lighting_shader.setVec4(c"light.vector", &light_vector);
+        //self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
+        //self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
+        //self.lighting_shader.setVec3(c"light.specular", &self.diffuse_color);
+        //self.lighting_shader.setFloat(c"light.constant", 1.0);
+        //self.lighting_shader.setFloat(c"light.linear", 0.045);
+        //self.lighting_shader.setFloat(c"light.quadratic", 0.0075);
+        //self.lighting_shader.setVec3(c"light.spotlightDirection", &spotlight_direction);
+        //self.lighting_shader.setFloat(c"light.spAngleInner", f32::cos(0.21));
+        //self.lighting_shader.setFloat(c"light.spAngleOuter", f32::cos(0.27));
     }
 }

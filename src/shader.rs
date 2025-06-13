@@ -4,6 +4,7 @@ use nalgebra_glm::TVec3;
 use crate::utils::compile_shader;
 use crate::textures::Material;
 
+#[derive(Copy, Clone)]
 pub struct ShaderProgram {
     id: GLuint,
 }
@@ -74,4 +75,5 @@ impl ShaderProgram {
             gl::Uniform4fv(uniform_location, 1, nalgebra_glm::value_ptr(value).as_ptr());
         }
     }
+
 }

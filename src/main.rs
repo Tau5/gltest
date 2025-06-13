@@ -9,6 +9,7 @@ mod player;
 mod aabb;
 mod collidable;
 mod app;
+mod lighting;
 
 use crate::app::App;
 use glfw;
