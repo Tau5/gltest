@@ -8,6 +8,7 @@ use crate::shader::ShaderProgram;
 pub struct LightManager {
     light_points: Vec<PointLight>,
     max_lights: usize,
+    spotlight_enabled: bool,
     pub spot_light: Option<SpotLight>,
     pub directional_light: DirLight
 }
@@ -19,11 +20,11 @@ pub enum LightManagerError {
 }
 
 impl LightManager {
-    
+
     pub fn iter(&self) -> Iter<'_, PointLight> {
         self.light_points.iter()
     }
-    
+
     pub fn iter_mut(&mut self) -> IterMut<'_, PointLight> {
         self.light_points.iter_mut()
     }
@@ -51,7 +52,11 @@ impl LightManager {
         }
 
         if let Some(spotlight) = &self.spot_light {
-            spotlight.load(shader);
+            if self.spotlight_enabled {
+                spotlight.load(shader);
+            } else {
+                shader.setInt(c"spotLightEnable", 0);
+            }
         }
 
         self.directional_light.load(shader);
@@ -59,6 +64,10 @@ impl LightManager {
 
     pub fn new(max_lights: usize, directional_light: DirLight, spot_light: Option<SpotLight>) -> Self {
         let light_points = Vec::with_capacity(max_lights);
-        Self { light_points, max_lights, spot_light, directional_light }
+        Self { light_points, max_lights, spotlight_enabled: true, spot_light, directional_light }
+    }
+
+    pub fn toggle_spotlight(&mut self) {
+        self.spotlight_enabled = !self.spotlight_enabled;
     }
 }

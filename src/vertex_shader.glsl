@@ -21,7 +21,6 @@ void main() {
     FragPos = vec3(model * vec4(aPos, 1.0));
 
     TexCoord = vec2(aTexCoord.x, aTexCoord.y) * factor;
-
     /*
      Inversing matrices is a costly operation for shaders, so wherever possible try to avoid doing inverse operations
      since they have to be done on each vertex of your scene. For learning purposes this is fine, but for an efficient

@@ -2,10 +2,10 @@ use nalgebra_glm::Vec3;
 use crate::shader::ShaderProgram;
 
 pub struct DirLight {
-    direction: Vec3,
-    ambient: Vec3,
-    diffuse: Vec3,
-    specular: Vec3,
+    pub direction: Vec3,
+    pub ambient: Vec3,
+    pub diffuse: Vec3,
+    pub specular: Vec3,
 }
 
 impl DirLight {

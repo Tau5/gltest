@@ -10,6 +10,7 @@ mod aabb;
 mod collidable;
 mod app;
 mod lighting;
+mod input;
 
 use crate::app::App;
 use glfw;
@@ -37,8 +38,8 @@ fn start() {
 
 }
 
-const DEFAULT_WINDOW_WIDTH: i32 = 800;
-const DEFAULT_WINDOW_HEIGHT: i32 = 600;
+const DEFAULT_WINDOW_WIDTH: i32 = 1280;
+const DEFAULT_WINDOW_HEIGHT: i32 = 800;
 
 fn main() {
     println!("Hello, world!");

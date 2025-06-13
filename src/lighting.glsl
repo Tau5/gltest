@@ -138,7 +138,7 @@ vec3 calculateSpotlight(SpotLight light, vec3 normal, vec3 viewDir) {
     diffuse *= attenuation;
     specular *= attenuation;
 
-    return vec3(diffuse + ambient + specular + vec3(texture(material.emission, TexCoord)));
+    return vec3(diffuse + specular + vec3(texture(material.emission, TexCoord)));
 }
 
 

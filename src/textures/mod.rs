@@ -53,8 +53,8 @@ pub fn load_texture(image: DynamicImage) -> GLTexture {
     unsafe {
         gl::GenTextures(1, std::ptr::from_mut(&mut tex_id));
         gl::BindTexture(gl::TEXTURE_2D, tex_id);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as GLint);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::NEAREST as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
 
         match image {
             DynamicImage::ImageRgba8(rgba) => {
