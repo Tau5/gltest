@@ -201,6 +201,75 @@ impl App {
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
 
+    fn generate_objects(mut material_store: &mut MaterialStore) -> Vec<Object> {
+        let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
+        let plane_pos = glm::vec3(8.0, -5.0, -2.0);
+
+        let mut objects = Vec::new();
+
+        let container = Object::new(
+            testcube_pos,
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(2.0, 1.0, 2.0),
+            Box::from(prefabs::cube()),
+            material_store.get("container"),
+            true,
+        );
+
+        let plane = Object::new(
+            plane_pos,
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(10.0, 1.0, 10.0),
+            Box::from(prefabs::cube()),
+            material_store.get("box"),
+            true,
+        );
+
+        let beach_sand = Object::new(
+            glm::vec3(0.0, -15.0, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(40.0, 0.1, 20.0),
+            Box::from(prefabs::cube()),
+            material_store.get("sand"),
+            true,
+        );
+
+        let beach_waterbed = Object::new(
+            glm::vec3(0.0, -20.0, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(70.0, 0.1, 70.0),
+            Box::from(prefabs::cube()),
+            material_store.get("sand"),
+            true,
+        );
+
+        let ocean = Object::new(
+            glm::vec3(0.0, -15.1, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(100.0, 0.1, 100.0),
+            Box::from(prefabs::cube()),
+            material_store.get("water"),
+            true,
+        );
+
+        let fire = Object::new(
+            glm::vec3(-5.0, -13.0, -5.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(2.0, 2.0, 0.0),
+            Box::from(prefabs::cube()),
+            material_store.get("fogata"),
+            true
+        );
+
+        objects.push(container);
+        objects.push(plane);
+        objects.push(beach_sand);
+        objects.push(beach_waterbed);
+        objects.push(ocean);
+        objects.push(fire);
+        objects
+    }
+
     pub fn game_loop(&mut self) {
         if let Some(window) = unsafe { self.window.as_mut() } {
             //process_input(window);
