@@ -49,6 +49,7 @@ impl PointLight {
         );
     }
 
+    // See recommended values: https://wiki.ogre3d.org/tiki-index.php?page=-Point+Light+Attenuation
     pub fn new(position: Vec3, ambient: Vec3, diffuse: Vec3, specular: Vec3, constant: GLfloat, linear: GLfloat, quadratic: GLfloat) -> Self {
         Self { position, ambient, diffuse, specular, constant, linear, quadratic }
     }

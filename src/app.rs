@@ -1,5 +1,5 @@
 use crate::camera::Camera;
-use crate::lighting::{DirLight, LightManager, SpotLight};
+use crate::lighting::{DirLight, LightManager, PointLight, SpotLight};
 use crate::object::Object;
 use crate::player::Player;
 use crate::prefabs;
@@ -71,17 +71,17 @@ impl App {
         let lightpoint_pos = glm::vec3(-5.0, -12.0, -4.0);
         let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.89, 0.81);
         //let light_color: TVec3<GLfloat> = glm::vec3(0.94, 0.49, 0.41);
-        let diffuse_color: TVec3<GLfloat> = light_color.scale(0.5);
-        let ambient_color: TVec3<GLfloat> = light_color.scale(0.2) as TVec3<f32>;
+        let diffuse_color: TVec3<GLfloat> = light_color.scale(0.1);
+        let ambient_color: TVec3<GLfloat> = light_color.scale(0.05) as TVec3<f32>;
 
         let spotlight = SpotLight::new(
             player.get_position(),
             player.get_front(),
             0.21,
             0.27,
-            ambient_color,
-            diffuse_color,
-            diffuse_color,
+            glm::vec3(0.2, 0.2, 0.2),
+            glm::vec3(0.5, 0.5, 0.5),
+            glm::vec3(0.5, 0.5, 0.5),
         );
 
         let mut light_manager = LightManager::new(
@@ -129,6 +129,14 @@ impl App {
         //let lightpoint_pos = glm::vec3(-0.0, -0.7, -0.7);
 
         let objects = Self::generate_objects(&mut material_store);
+
+        light_manager.add_lightpoint(PointLight::new(
+            glm::vec3(-5.0, -13.0, -5.0),
+            glm::vec3(1.0, 0.2, 0.2),
+            glm::vec3(1.0, 0.6, 0.6),
+            glm::vec3(1.0, 0.6, 0.6),
+            1.0, 0.07, 0.017
+        )).unwrap();
 
         let proj = glm::perspective(
             width as f32 / height as f32,

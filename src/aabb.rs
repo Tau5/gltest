@@ -1,13 +1,13 @@
-use std::{mem, ptr};
-use std::ffi::c_void;
-use gl::types::{GLfloat, GLsizei, GLsizeiptr, GLuint};
-use nalgebra_glm as glm;
-use glm::Vec3;
-use nalgebra_glm::vec3;
 use crate::prefabs;
 use crate::shader::ShaderProgram;
 use crate::utils::gen_buffers;
 use crate::vao::{LineLoopVAO, TriangleArrayVAO, VAO};
+use gl::types::{GLfloat, GLsizei, GLsizeiptr, GLuint};
+use glm::Vec3;
+use nalgebra_glm as glm;
+use nalgebra_glm::vec3;
+use std::ffi::c_void;
+use std::{mem, ptr};
 
 #[derive(Debug)]
 pub struct AABB {
@@ -27,38 +27,24 @@ impl AABB {
         let aMaxX = self.end.x;
         let bMinX = other.start.x;
         let bMaxX = other.end.x;
-        
+
         //let aMinX = self.position.x;
         //let aMaxX = self.position.x + self.size.x;
         //let bMinX = other.position.x;
         //let bMaxX = other.position.x + other.size.x;
 
-        let res =
-            aMinX <= bMaxX
-                &&  aMaxX >= bMinX
-                &&  self.start.y < other.end.y
-                &&  self.end  .y >= other.start.y
-                &&  self.start.z <= other.end.z
-                &&  self.end  .z >= other.start.z;
-
-        //let res =
-        //    aMinX <= bMaxX
-        //&&  aMaxX >= bMinX
-        //&&  self.position.y < other.position.y + other.size.y
-        //&&  self.position.y + self.size.y >= other.position.y
-        //&&  self.position.z <= other.position.z + other.size.z
-        //&&  self.position.z + self.size.z >= other.position.z;
-
-
-        println!("Collides Me{:?} with Other{:?}? {}", &self, other, res);
-        
-        res
+        aMinX <= bMaxX
+            && aMaxX >= bMinX
+            && self.start.y < other.end.y
+            && self.end.y >= other.start.y
+            && self.start.z <= other.end.z
+            && self.end.z >= other.start.z
     }
-    
+
     pub fn translate(&self, trans: Vec3) -> Self {
         let start = self.start + trans;
         let end = self.end + trans;
-        
+
         AABB::new(start, end)
     }
 
@@ -66,10 +52,9 @@ impl AABB {
         return prefabs::cube();
     }
 
-
     pub fn render(&self, vao: &TriangleArrayVAO, shader: &ShaderProgram) {
         let mut model = glm::identity::<f32, 4>();
-        let scale = (self.end - self.start)*1.01;
+        let scale = (self.end - self.start) * 1.01;
         let position = ((self.start + self.end) / 2.0);
 
         model = glm::translate(&model, &position);
@@ -79,6 +64,4 @@ impl AABB {
 
         vao.render();
     }
-
 }
-
