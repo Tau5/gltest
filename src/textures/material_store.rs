@@ -48,7 +48,7 @@ impl MaterialStore {
         specular_path: Option<&str>,
         emission_path: Option<&str>,
         factor: GLfloat
-    ) -> Result<(), MaterialStoreError> {
+    ) -> Result<String, MaterialStoreError> {
         if self.store.contains_key(&id.to_string()) {
             return Err(MaterialStoreError::IdAlreadyUsed);
         }
@@ -72,7 +72,7 @@ impl MaterialStore {
 
         self.store.insert(id.to_string(), mat);
 
-        Ok(())
+        Ok(id.to_string())
     }
 
     pub fn get(&self, id: &str) -> Material {

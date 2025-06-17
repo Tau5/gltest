@@ -5,6 +5,7 @@ use crate::textures::*;
 use nalgebra_glm as glm;
 use crate::aabb::AABB;
 use crate::collidable::Collidable;
+use crate::mesh::Mesh;
 use crate::shader::ShaderProgram;
 use crate::vao::{TriangleArrayVAO, VAO};
 
@@ -138,6 +139,13 @@ impl Object {
         if let Some(vao) = &self.aaab_vao {
             self.aabb.render(vao, shader_program);
         }
+    }
+
+    pub fn from_mesh(translate: Vec3, rotation: Vec3, scale: Vec3, has_collision: bool, mesh: Mesh, material_store: &MaterialStore) -> Self {
+        let material = material_store.get(&mesh.material_id);
+        //let material = material_store.get("fallback");
+
+        Self::new(translate, rotation, scale, Box::from(mesh), material, has_collision)
     }
 
 }

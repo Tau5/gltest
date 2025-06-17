@@ -11,6 +11,9 @@ mod collidable;
 mod app;
 mod lighting;
 mod input;
+mod mesh;
+mod model;
+mod geometry;
 
 use crate::app::App;
 use glfw;
@@ -55,7 +58,6 @@ fn main() {
         let window: *mut GLFWwindow =
             glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, title.as_ptr(), null_mut(), null_mut());
 
-        glfw::ffi::glfwSetInputMode(window, glfw::ffi::CURSOR, glfw::ffi::CURSOR_DISABLED);
 
         if window.is_null() {
             glfwTerminate();

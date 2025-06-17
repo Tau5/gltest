@@ -16,6 +16,7 @@ use std::ffi::c_double;
 use std::ptr;
 use glfw::Key;
 use crate::input::{InputManager, KeyStatus};
+use crate::model::Model;
 
 pub struct App {
     objects: Vec<Object>,
@@ -171,6 +172,8 @@ impl App {
         input_manager.add_key(Key::Right);
         input_manager.add_key(Key::Escape);
 
+
+        unsafe { glfw::ffi::glfwSetInputMode(window, glfw::ffi::CURSOR, glfw::ffi::CURSOR_DISABLED); }
         Self {
             window,
             last_x: 0.0,
@@ -189,7 +192,7 @@ impl App {
             material_store,
             light_manager,
             lamp_vao,
-            input_manager
+            input_manager,
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
@@ -197,6 +200,7 @@ impl App {
     fn generate_objects(mut material_store: &mut MaterialStore) -> Vec<Object> {
         let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
         let plane_pos = glm::vec3(8.0, -5.0, -2.0);
+        let mut model_test = Model::new("models/example.glb".into(), &mut material_store);
 
         let mut objects = Vec::new();
 
@@ -245,14 +249,17 @@ impl App {
             true,
         );
 
-        let fire = Object::new(
+        let mesh = model_test.meshes.remove(0);
+
+        let fire = Object::from_mesh(
             glm::vec3(-5.0, -14.0, -5.0),
             glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(2.0, 2.0, 0.0),
-            Box::from(prefabs::cube()),
-            material_store.get("fogata"),
+            glm::vec3(2.0, 2.0, 2.0),
             true,
+            mesh,
+            material_store
         );
+
 
         objects.push(container);
         objects.push(plane);
@@ -260,6 +267,7 @@ impl App {
         objects.push(beach_waterbed);
         objects.push(ocean);
         objects.push(fire);
+        
         objects
     }
 
@@ -377,7 +385,6 @@ impl App {
             for obj in &self.objects {
                 obj.render(&self.lighting_shader);
             }
-
 
             self.lightpoint_shader.load();
             self.lightpoint_shader.setMat4(c"view", &view);
