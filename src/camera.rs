@@ -87,7 +87,6 @@ impl Camera {
     }
 
     pub fn get_view(&self) -> glm::TMat4<f32> {
-        println!("{:?}", self.position);
         glm::look_at(
             &self.position,
             &(self.position + self.get_camera_front()),

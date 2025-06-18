@@ -19,7 +19,7 @@ impl Model {
     fn process_node(&mut self, node: &Node, scene: &Scene, material_store: &mut MaterialStore) {
         for mesh_idx in &node.meshes {
             if let Some(mesh) = scene.meshes.get(*mesh_idx as usize) {
-                self.meshes.push(Mesh::from(mesh, scene, material_store, String::from("aaaa")));
+                self.meshes.push(Mesh::from(mesh, scene, material_store, String::from("aaaa"), node.transformation));
             }
         }
 
@@ -66,10 +66,10 @@ impl Geometry for Model {
                 min = mesh.min_position;
             }
             if mesh.max_position > max {
-               max = mesh.max_position; 
+               max = mesh.max_position;
             }
         }
-        
+
         AABB::new(min, max)
     }
 }

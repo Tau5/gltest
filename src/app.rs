@@ -4,7 +4,7 @@ use crate::object::Object;
 use crate::player::Player;
 use crate::prefabs;
 use crate::shader::ShaderProgram;
-use crate::textures::{MaterialStore, load_image, load_texture};
+use crate::textures::{MaterialStore, load_image, load_texture, TextureSource};
 use crate::vao::{TriangleArrayVAO, VAO};
 use gl::types::{GLfloat, GLint};
 use glfw::ffi::{
@@ -15,6 +15,7 @@ use nalgebra_glm::{TMat4, TVec3};
 use std::ffi::c_double;
 use std::ptr;
 use glfw::Key;
+use crate::cube::Cube;
 use crate::input::{InputManager, KeyStatus};
 use crate::model::Model;
 
@@ -113,9 +114,9 @@ impl App {
         material_store
             .load(
                 "container",
-                Some("textures/container2.png"),
-                Some("textures/container2_specular.png"),
-                Some("textures/container2_emission.png"),
+                Some(TextureSource::ImagePath("textures/container2.png".into())),
+                Some(TextureSource::ImagePath("textures/container2_specular.png".into())),
+                Some(TextureSource::ImagePath("textures/container2_emission.png".into())),
                 1.0,
             )
             .expect("Error loading container material");
@@ -123,19 +124,19 @@ impl App {
         material_store
             .load(
                 "sand",
-                Some("textures/sand.png"),
-                Some("textures/sand_spec.png"),
+                Some(TextureSource::ImagePath("textures/sand.png".into())),
+                Some(TextureSource::ImagePath("textures/sand_spec.png".into())),
                 None,
                 4.0,
             )
             .unwrap();
 
         material_store
-            .load("water", Some("textures/water.png"), None, None, 16.0)
+            .load("water", Some(TextureSource::ImagePath("textures/water.png".into())), None, None, 16.0)
             .unwrap();
 
         material_store
-            .load("fogata", Some("textures/fogata.png"), None, None, 1.0)
+            .load("fogata", Some(TextureSource::ImagePath("textures/fogata.png".into())), None, None, 1.0)
             .unwrap();
 
         //let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
@@ -208,8 +209,9 @@ impl App {
             testcube_pos,
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(2.0, 1.0, 2.0),
-            Box::from(prefabs::cube()),
-            material_store.get("container"),
+            Box::from(Cube::new(
+                material_store.get("container"),
+            )),
             true,
         );
 
@@ -217,8 +219,8 @@ impl App {
             plane_pos,
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(10.0, 1.0, 10.0),
-            Box::from(prefabs::cube()),
-            material_store.get("box"),
+            Box::from(Cube::new( material_store.get("box"),
+            )),
             true,
         );
 
@@ -226,8 +228,8 @@ impl App {
             glm::vec3(0.0, -15.0, 0.0),
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(40.0, 0.1, 20.0),
-            Box::from(prefabs::cube()),
-            material_store.get("sand"),
+            Box::from(Cube::new( material_store.get("sand"),
+            )),
             true,
         );
 
@@ -235,8 +237,8 @@ impl App {
             glm::vec3(0.0, -20.0, 0.0),
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(70.0, 0.1, 70.0),
-            Box::from(prefabs::cube()),
-            material_store.get("sand"),
+            Box::from(Cube::new( material_store.get("sand"),
+            )),
             true,
         );
 
@@ -244,19 +246,17 @@ impl App {
             glm::vec3(0.0, -15.1, 0.0),
             glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(100.0, 0.1, 100.0),
-            Box::from(prefabs::cube()),
-            material_store.get("water"),
+            Box::from(Cube::new( material_store.get("water"),
+            )),
             true,
         );
 
-        let mesh = model_test.meshes.remove(0);
-
-        let fire = Object::from_mesh(
+        let fire = Object::from_model(
             glm::vec3(-5.0, -14.0, -5.0),
             glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(2.0, 2.0, 2.0),
+            glm::vec3(1.0, 1.0, 1.0),
             true,
-            mesh,
+            model_test,
             material_store
         );
 
@@ -383,7 +383,7 @@ impl App {
             self.load_lighting_shader(&view);
 
             for obj in &self.objects {
-                obj.render(&self.lighting_shader);
+                obj.render(&self.lighting_shader, &self.material_store);
             }
 
             self.lightpoint_shader.load();

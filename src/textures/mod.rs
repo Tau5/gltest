@@ -4,10 +4,15 @@ mod material_store;
 pub use material::*;
 pub use material_store::*;
 
-use gl::types::{GLenum, GLint, GLsizei, GLuint};
+use gl::types::{GLenum, GLfloat, GLint, GLsizei, GLuint};
 use image::{DynamicImage, ImageError, ImageReader};
 use std::ffi::c_void;
+use nalgebra_glm::{TVec3, Vec3};
 
+pub enum TextureSource {
+    ImagePath(String),
+    BaseColor(TVec3<GLfloat>)
+}
 type GLTextureID = GLuint;
 #[derive(Clone, Copy)]
 pub(crate) struct GLTexture {
@@ -67,6 +72,26 @@ pub fn load_texture(image: DynamicImage) -> GLTexture {
                                0, gl::RGBA, gl::UNSIGNED_BYTE, rgba.as_raw().as_slice().as_ptr() as *const c_void);
             }
         }
+
+        gl::GenerateMipmap(gl::TEXTURE_2D);
+    }
+
+    GLTexture::new(gl::TEXTURE_2D, tex_id)
+}
+
+pub(crate) fn generate_texture_from_color(color: TVec3<GLfloat>) -> GLTexture {
+    let tex_data: [u8; 3] = [(color.x * 255.0) as u8, (color.y * 255.0) as u8, (color.z * 255.0) as u8];
+
+    let mut tex_id: GLuint = 0;
+
+    unsafe {
+        gl::GenTextures(1, std::ptr::from_mut(&mut tex_id));
+        gl::BindTexture(gl::TEXTURE_2D, tex_id);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
+
+        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGB as GLint, 1 as GLsizei, 1 as GLsizei,
+                       0, gl::RGB, gl::UNSIGNED_BYTE, tex_data.as_ptr() as *const c_void);
 
         gl::GenerateMipmap(gl::TEXTURE_2D);
     }

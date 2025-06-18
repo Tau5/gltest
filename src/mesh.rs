@@ -5,10 +5,13 @@ use std::fmt::format;
 use fastrand::usize;
 use gl::types::{GLfloat, GLint, GLsizei, GLsizeiptr, GLuint};
 use image::EncodableLayout;
-use nalgebra_glm::{Vec2, Vec3};
+use nalgebra_glm::{mat4, vec3, vec4, Vec2, Vec3};
 use russimp::material::TextureType;
+use russimp::Matrix4x4;
+use crate::aabb::AABB;
 use crate::shader::ShaderProgram;
-use crate::textures::{BindableTexture, GLTexture, Material, MaterialStore};
+use crate::textures::{BindableTexture, GLTexture, Material, MaterialStore, TextureSource};
+use crate::util::vec3ai_to_glm;
 use crate::utils::gen_buffers;
 use crate::vao::VAO;
 
@@ -43,10 +46,11 @@ pub struct Mesh {
     pub min_position: Vec3,
     pub max_position: Vec3,
     vao: GLuint,
+    pub aabb: AABB
 }
 
 impl Mesh {
-    pub fn new(vertices: Vec<Vertex>, indices: Vec<GLuint>, material_id: String, material: Material) -> Self {
+    pub fn new(vertices: Vec<Vertex>, indices: Vec<GLuint>, material_id: String, material: Material, aabb: AABB) -> Self {
         let mut min = vertices[0].position;
         let mut max = vertices[0].position;
 
@@ -62,7 +66,7 @@ impl Mesh {
             }
         }
 
-        let mut obj = Self { vertices, indices, material_id , material, min_position: min, max_position: max, vao: 0 };
+        let mut obj = Self { vertices, indices, material_id , material, min_position: min, max_position: max, vao: 0, aabb };
         obj.setup_mesh();
 
         obj
@@ -147,11 +151,17 @@ impl Mesh {
 
 
 impl Mesh {
-    pub fn from(mesh: &russimp::mesh::Mesh, scene: &russimp::scene::Scene, material_store: &mut MaterialStore, model_name: String) -> Self {
+    pub fn from(mesh: &russimp::mesh::Mesh, scene: &russimp::scene::Scene, material_store: &mut MaterialStore, model_name: String, tns: Matrix4x4) -> Self {
         let mut vertices = Vec::new();
+        let transformation = mat4(
+            tns.a1, tns.a2, tns.a3, tns.a4,
+            tns.b1, tns.b2, tns.b3, tns.b4,
+            tns.c1, tns.c2, tns.c3, tns.c4,
+            tns.d1, tns.d2, tns.d3, tns.d4,
+        );
 
         for (i, vertex) in mesh.vertices.iter().enumerate() {
-            let vtx = Vec3::new(vertex.x, vertex.y, vertex.z);
+            let vtx = (transformation * vec4(vertex.x, vertex.y, vertex.z, 1.0)).xyz();
             let normal = mesh.normals[i];
             let normal = Vec3::new(normal.x, normal.y, normal.z);
 
@@ -177,27 +187,43 @@ impl Mesh {
 
         let material = scene.materials.get(mesh.material_index as usize).unwrap();
 
-        let diffuse = material.textures.get(&TextureType::Diffuse)
+        let mut diffuse = material.textures.get(&TextureType::Diffuse)
             .and_then(|f|
-                          Some(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint))
+                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
         let specular = material.textures.get(&TextureType::Specular)
             .and_then(|f|
-                          Some(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint))
+                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
         let emission = material.textures.get(&TextureType::EmissionColor)
             .and_then(|f|
-                Some(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint))
+                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
 
+        if diffuse.is_none() {
+            for prop in &material.properties {
+                if prop.key == "$clr.diffuse" {
+                    if let russimp::material::PropertyTypeInfo::FloatArray(color) = &prop.data {
+                        diffuse = Some(TextureSource::BaseColor(vec3(
+                            color[0] as GLfloat,
+                            color[1] as GLfloat,
+                            color[2] as GLfloat
+                        )))
+                    }
+                }
+            }
+        }
+
         let material_id = material_store.load(format!("{}mat{}", model_name, mesh.material_index).as_str(),
-            diffuse.as_deref(), specular.as_deref(), emission.as_deref(), 1.0
+            diffuse, specular, emission, 1.0
         ).unwrap();
 
         //let material_id= String::from("fallback");
 
         let material = material_store.get(&material_id);
 
-        Mesh::new(vertices, indices, material_id, material)
+        let aabb = AABB::new(vec3ai_to_glm(mesh.aabb.min), vec3ai_to_glm(mesh.aabb.max));
+
+        Mesh::new(vertices, indices, material_id, material, aabb)
     }
 }

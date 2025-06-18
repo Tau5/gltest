@@ -64,8 +64,6 @@ impl Player {
         if (!collides) {
             self.aabb = new_aabb;
             self.camera.translate(x, z, 0.0);
-        } else {
-            println!("Collides!")
         }
 
     }

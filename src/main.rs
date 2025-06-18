@@ -14,6 +14,8 @@ mod input;
 mod mesh;
 mod model;
 mod geometry;
+mod cube;
+mod util;
 
 use crate::app::App;
 use glfw;

@@ -1,9 +1,10 @@
 use crate::textures::material_store::MaterialStoreError::TextureLoadError;
-use crate::textures::{GLTexture, Material};
+use crate::textures::{GLTexture, Material, TextureSource};
 use crate::textures::{load_image, load_texture};
 use std::collections::HashMap;
 use gl::types::GLfloat;
 use thiserror::Error;
+use crate::textures;
 
 #[derive(Error, Debug)]
 pub enum MaterialStoreError {
@@ -24,7 +25,7 @@ impl MaterialStore {
             store: HashMap::new(),
             fallback: Material {
                 diffuse_map: Some(
-                    MaterialStore::load_texture(default_texture_path.as_str())
+                    MaterialStore::load_texture(TextureSource::ImagePath(default_texture_path))
                         .expect("Error loading fallback texture for MaterialStore"),
                 ),
                 specular_map: None,
@@ -33,20 +34,28 @@ impl MaterialStore {
             },
         }
     }
-    fn load_texture(path: &str) -> Result<GLTexture, MaterialStoreError> {
-        if let Ok(img) = load_image(path) {
-            Ok(load_texture(img))
-        } else {
-            Err(TextureLoadError(String::from(path)))
+    fn load_texture(source: TextureSource) -> Result<GLTexture, MaterialStoreError> {
+        match source {
+            TextureSource::ImagePath(path) => {
+                if let Ok(img) = load_image(path.as_str()) {
+                    Ok(load_texture(img))
+                } else {
+                    Err(TextureLoadError(path))
+                }        
+            }
+            TextureSource::BaseColor(color) => {
+                Ok(textures::generate_texture_from_color(color))
+            }
         }
+        
     }
 
     pub fn load(
         &mut self,
         id: &str,
-        diffuse_path: Option<&str>,
-        specular_path: Option<&str>,
-        emission_path: Option<&str>,
+        diffuse_path: Option<TextureSource>,
+        specular_path: Option<TextureSource>,
+        emission_path: Option<TextureSource>,
         factor: GLfloat
     ) -> Result<String, MaterialStoreError> {
         if self.store.contains_key(&id.to_string()) {

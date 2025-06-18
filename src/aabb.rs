@@ -9,7 +9,7 @@ use nalgebra_glm::vec3;
 use std::ffi::c_void;
 use std::{mem, ptr};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct AABB {
     pub start: Vec3,
     pub end: Vec3,
@@ -49,7 +49,7 @@ impl AABB {
     }
 
     pub fn get_vao(&self) -> TriangleArrayVAO {
-        return prefabs::cube();
+        prefabs::cube()
     }
 
     pub fn render(&self, vao: &TriangleArrayVAO, shader: &ShaderProgram) {

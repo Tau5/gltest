@@ -1,11 +1,13 @@
 use gl::types::{GLfloat, GLint, GLuint};
-use nalgebra_glm::{proj, Mat3, Mat4, TVec3, Vec3};
+use nalgebra_glm::{mat4_to_mat3, proj, vec3, Mat3, Mat4, TVec3, Vec3};
 use crate::textures::*;
 
 use nalgebra_glm as glm;
 use crate::aabb::AABB;
 use crate::collidable::Collidable;
+use crate::geometry::Geometry;
 use crate::mesh::Mesh;
+use crate::model::Model;
 use crate::shader::ShaderProgram;
 use crate::vao::{TriangleArrayVAO, VAO};
 
@@ -13,31 +15,32 @@ pub struct Object {
     translate: Vec3,
     rotation: Vec3,
     scale: Vec3,
-    vao: Box<dyn VAO>,
-    material: Material,
     model: Mat4,
     normal: Mat3,
     has_collision: bool,
     aabb: AABB,
-    aaab_vao: Option<TriangleArrayVAO>
+    aaab_vao: Option<TriangleArrayVAO>,
+    geometry: Box<dyn Geometry>,
+    base_aabb: AABB
 }
 
 impl Object {
-    pub fn new(translate: Vec3, rotation: Vec3, scale: Vec3, vao: Box<dyn VAO>, material: Material, has_collision: bool) -> Self {
+    pub fn new(translate: Vec3, rotation: Vec3, scale: Vec3, geometry: Box<dyn Geometry>, has_collision: bool) -> Self {
+        let base_aabb = geometry.base_aabb();
+
         let mut out = Self {
             translate,
             rotation,
             scale,
-            vao,
-            material,
+            geometry,
             model: glm::identity::<f32, 4>(),
             normal: glm::identity::<f32, 3>(),
             has_collision,
-            aabb: AABB::new(
-                -(scale / 2.0),
-                scale / 2.0).translate(translate),
+            aabb: base_aabb,
             aaab_vao: None,
+            base_aabb
         };
+
         out.update_model();
         out.update_aabb();
         out.aaab_vao = Some(out.aabb.get_vao());
@@ -81,8 +84,12 @@ impl Object {
     }
 
     fn update_aabb(&mut self) {
-        self.aabb.start = -(self.scale / 2.0);
-        self.aabb.end = self.scale / 2.0;
+        self.aabb.start.x = self.base_aabb.start.x * self.scale.x;
+        self.aabb.start.y = self.base_aabb.start.y * self.scale.y;
+        self.aabb.start.z = self.base_aabb.start.z * self.scale.z;
+        self.aabb.end.x = self.scale.x * self.base_aabb.end.x;
+        self.aabb.end.y = self.scale.y * self.base_aabb.end.y;
+        self.aabb.end.z = self.scale.z * self.base_aabb.end.z;
         self.aabb = self.aabb.translate(self.translate);
     }
 
@@ -96,39 +103,8 @@ impl Object {
         // TODO: Implement rotation! (Requires quaternions and math thingies)
     }
 
-    pub fn render(&self, shader: &ShaderProgram) {
-        shader.setMat4(c"model", &self.model);
-        shader.setMat3(c"normalMatrix", &self.normal);
-        shader.setFloat(c"factor", self.material.factor);
-
-        if let Some(diffuse_map) = &self.material.diffuse_map {
-            diffuse_map.bind(gl::TEXTURE0);
-            shader.setInt(c"material.diffuse", 0);
-        }
-
-        if let Some(specular_map) = &self.material.specular_map {
-            specular_map.bind(gl::TEXTURE1);
-            shader.setInt(c"material.specular", 1);
-        }
-
-        if let Some(emission_map) = &self.material.emission_map {
-            emission_map.bind(gl::TEXTURE2);
-            shader.setInt(c"material.emission", 2);
-        }
-        
-        shader.setFloat(c"material.shininess", 32.0);
-
-        self.vao.render();
-
-        if let Some(diffuse_map) = &self.material.diffuse_map {
-            diffuse_map.unbind(gl::TEXTURE0);
-        }
-        if let Some(specular_map) = &self.material.diffuse_map {
-            specular_map.unbind(gl::TEXTURE1);
-        }
-        if let Some(emission_map) = &self.material.diffuse_map {
-            emission_map.unbind(gl::TEXTURE2);
-        }
+    pub fn render(&self, shader: &ShaderProgram, material_store: &MaterialStore) {
+        self.geometry.render(shader, &self.model, &self.normal, material_store);
     }
 
     pub fn debug_render_aabb(&self, shader_program: &ShaderProgram) {
@@ -141,11 +117,8 @@ impl Object {
         }
     }
 
-    pub fn from_mesh(translate: Vec3, rotation: Vec3, scale: Vec3, has_collision: bool, mesh: Mesh, material_store: &MaterialStore) -> Self {
-        let material = material_store.get(&mesh.material_id);
-        //let material = material_store.get("fallback");
-
-        Self::new(translate, rotation, scale, Box::from(mesh), material, has_collision)
+    pub fn from_model(translate: Vec3, rotation: Vec3, scale: Vec3, has_collision: bool, model: Model, material_store: &MaterialStore) -> Self {
+        Self::new(translate, rotation, scale, Box::from(model), has_collision)
     }
 
 }
