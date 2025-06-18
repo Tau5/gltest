@@ -16,19 +16,19 @@ pub struct Model {
 
 impl Model {
 
-    fn process_node(&mut self, node: &Node, scene: &Scene, material_store: &mut MaterialStore) {
+    fn process_node(&mut self, node: &Node, scene: &Scene, material_store: &mut MaterialStore, id: String) {
         for mesh_idx in &node.meshes {
             if let Some(mesh) = scene.meshes.get(*mesh_idx as usize) {
-                self.meshes.push(Mesh::from(mesh, scene, material_store, String::from("aaaa"), node.transformation));
+                self.meshes.push(Mesh::from(mesh, scene, material_store, id.clone(), node.transformation));
             }
         }
 
         for child in node.children.borrow().iter() {
-            self.process_node(child, scene, material_store);
+            self.process_node(child, scene, material_store, id.clone());
         }
     }
 
-    pub fn new(path: String, material_store: &mut MaterialStore) -> Self {
+    pub fn new(path: String, id: String, material_store: &mut MaterialStore) -> Self {
         let scene = Scene::from_file(&path, vec![
             PostProcess::GenerateNormals,
             PostProcess::Triangulate
@@ -40,7 +40,7 @@ impl Model {
         };
 
         let root = &scene.root.clone().unwrap();
-        out.process_node(root.as_ref(), &scene, material_store);
+        out.process_node(root.as_ref(), &scene, material_store, id);
 
 
 
@@ -58,18 +58,10 @@ impl Geometry for Model {
         }
     }
 
-    fn base_aabb(&self) -> AABB {
-        let mut min = self.meshes[0].min_position;
-        let mut max = self.meshes[0].max_position;
-        for mesh in &self.meshes {
-            if mesh.min_position < min {
-                min = mesh.min_position;
-            }
-            if mesh.max_position > max {
-               max = mesh.max_position;
-            }
-        }
-
-        AABB::new(min, max)
+    fn base_aabb(&self) -> Vec<AABB> {
+        self.meshes
+            .iter()
+            .map(|f| f.aabb)
+            .collect::<Vec<AABB>>()
     }
 }

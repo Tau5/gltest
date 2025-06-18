@@ -5,5 +5,5 @@ use crate::textures::MaterialStore;
 
 pub trait Geometry {
     fn render(&self, shader: &ShaderProgram, model: &Mat4, normal: &Mat3, material_store: &MaterialStore);
-    fn base_aabb(&self) -> AABB;
+    fn base_aabb(&self) -> Vec<AABB>;
 }

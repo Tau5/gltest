@@ -201,7 +201,7 @@ impl App {
     fn generate_objects(mut material_store: &mut MaterialStore) -> Vec<Object> {
         let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
         let plane_pos = glm::vec3(8.0, -5.0, -2.0);
-        let mut model_test = Model::new("models/example.glb".into(), &mut material_store);
+        let mut model_test = Model::new("models/example.glb".into(), "kit".into(), &mut material_store);
 
         let mut objects = Vec::new();
 
@@ -260,6 +260,15 @@ impl App {
             material_store
         );
 
+        let crank = Object::from_model(
+            glm::vec3(-2.0, -14.0, -5.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(0.1, 0.1, 0.1),
+            true,
+            Model::new("models/crank.glb".into(), "crank".into(), material_store),
+            material_store
+        );
+
 
         objects.push(container);
         objects.push(plane);
@@ -267,6 +276,7 @@ impl App {
         objects.push(beach_waterbed);
         objects.push(ocean);
         objects.push(fire);
+        objects.push(crank);
         
         objects
     }

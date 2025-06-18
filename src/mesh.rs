@@ -222,7 +222,26 @@ impl Mesh {
 
         let material = material_store.get(&material_id);
 
-        let aabb = AABB::new(vec3ai_to_glm(mesh.aabb.min), vec3ai_to_glm(mesh.aabb.max));
+        let mut aabb = AABB::new(vec3ai_to_glm(mesh.aabb.min), vec3ai_to_glm(mesh.aabb.max));
+
+        if (aabb.end - aabb.start).magnitude() <= 0.0 {
+            let mut min = vertices[0].position;
+            let mut max = vertices[0].position;
+
+            for vertex in &vertices {
+                let pos = vertex.position;
+                if (min.x > pos.x)  { min.x = pos.x; }
+                if (min.y > pos.y)  { min.y = pos.y; }
+                if (min.z > pos.z)  { min.z = pos.z; }
+
+                if (max.x < pos.x)  { max.x = pos.x; }
+                if (max.y < pos.y)  { max.y = pos.y; }
+                if (max.z < pos.z)  { max.z = pos.z; }
+            }
+
+            aabb.start = min;
+            aabb.end = max;
+        }
 
         Mesh::new(vertices, indices, material_id, material, aabb)
     }

@@ -53,10 +53,12 @@ impl Geometry for Cube {
         }
     }
 
-    fn base_aabb(&self) -> AABB {
-        AABB::new(
-            vec3(-0.5, -0.5, -0.5),
-            vec3(0.5, 0.5, 0.5)
-        )
+    fn base_aabb(&self) -> Vec<AABB> {
+        vec![
+            AABB::new(
+                vec3(-0.5, -0.5, -0.5),
+                vec3(0.5, 0.5, 0.5)
+            )
+        ]
     }
 }

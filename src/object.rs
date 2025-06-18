@@ -1,10 +1,12 @@
+use std::iter;
 use gl::types::{GLfloat, GLint, GLuint};
-use nalgebra_glm::{mat4_to_mat3, proj, vec3, Mat3, Mat4, TVec3, Vec3};
+use nalgebra_glm::{mat4_to_mat3, proj, translate, vec3, Mat3, Mat4, TVec3, Vec3};
 use crate::textures::*;
 
 use nalgebra_glm as glm;
 use crate::aabb::AABB;
 use crate::collidable::Collidable;
+use crate::{geometry, prefabs};
 use crate::geometry::Geometry;
 use crate::mesh::Mesh;
 use crate::model::Model;
@@ -18,10 +20,10 @@ pub struct Object {
     model: Mat4,
     normal: Mat3,
     has_collision: bool,
-    aabb: AABB,
-    aaab_vao: Option<TriangleArrayVAO>,
+    aabb: Vec<AABB>,
+    aabb_vao: Option<TriangleArrayVAO>,
     geometry: Box<dyn Geometry>,
-    base_aabb: AABB
+    base_aabb: Vec<AABB>
 }
 
 impl Object {
@@ -36,14 +38,14 @@ impl Object {
             model: glm::identity::<f32, 4>(),
             normal: glm::identity::<f32, 3>(),
             has_collision,
-            aabb: base_aabb,
-            aaab_vao: None,
+            aabb: base_aabb.clone(),
+            aabb_vao: None,
             base_aabb
         };
 
         out.update_model();
         out.update_aabb();
-        out.aaab_vao = Some(out.aabb.get_vao());
+        out.aabb_vao = Some(prefabs::cube());
 
         out
     }
@@ -84,13 +86,16 @@ impl Object {
     }
 
     fn update_aabb(&mut self) {
-        self.aabb.start.x = self.base_aabb.start.x * self.scale.x;
-        self.aabb.start.y = self.base_aabb.start.y * self.scale.y;
-        self.aabb.start.z = self.base_aabb.start.z * self.scale.z;
-        self.aabb.end.x = self.scale.x * self.base_aabb.end.x;
-        self.aabb.end.y = self.scale.y * self.base_aabb.end.y;
-        self.aabb.end.z = self.scale.z * self.base_aabb.end.z;
-        self.aabb = self.aabb.translate(self.translate);
+        for (i, base_aabb) in self.base_aabb.iter().enumerate() {
+            self.aabb[i].start.x = base_aabb.start.x * self.scale.x;
+            self.aabb[i].start.y = base_aabb.start.y * self.scale.y;
+            self.aabb[i].start.z = base_aabb.start.z * self.scale.z;
+            self.aabb[i].end.x = self.scale.x * base_aabb.end.x;
+            self.aabb[i].end.y = self.scale.y * base_aabb.end.y;
+            self.aabb[i].end.z = self.scale.z * base_aabb.end.z;
+            self.aabb[i] = self.aabb[i].translate(self.translate);
+        }
+        
     }
 
     fn update_model(&mut self) {
@@ -112,8 +117,10 @@ impl Object {
         //    self.aaab_vao = Some(self.aabb.get_vao());
         //}
 
-        if let Some(vao) = &self.aaab_vao {
-            self.aabb.render(vao, shader_program);
+        if let Some(vao) = &self.aabb_vao {
+            for aabb in &self.aabb {
+                aabb.render(vao, shader_program);
+            }
         }
     }
 
@@ -128,7 +135,7 @@ impl Collidable for Object {
         if !self.has_collision {
             false
         } else { 
-            self.aabb.collision(other)
+            self.aabb.iter().any(|f| f.collision(other))
         }
     }
 }
