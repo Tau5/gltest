@@ -27,6 +27,21 @@ pub struct Object {
 }
 
 impl Object {
+    pub(crate) fn render_scaled(&mut self, shader: &ShaderProgram, mat_store: &MaterialStore) {
+        let scale = self.scale;
+
+        let new_scale = self.scale * 1.02;
+        self.scale = new_scale;
+
+        self.update_model();
+        self.render(shader, mat_store);
+
+        self.scale = scale;
+        self.update_model();
+    }
+}
+
+impl Object {
     pub fn new(translate: Vec3, rotation: Vec3, scale: Vec3, geometry: Box<dyn Geometry>, has_collision: bool) -> Self {
         let base_aabb = geometry.base_aabb();
 
@@ -95,7 +110,7 @@ impl Object {
             self.aabb[i].end.z = self.scale.z * base_aabb.end.z;
             self.aabb[i] = self.aabb[i].translate(self.translate);
         }
-        
+
     }
 
     fn update_model(&mut self) {
@@ -134,7 +149,7 @@ impl Collidable for Object {
     fn collides(&self, other: &AABB) -> bool {
         if !self.has_collision {
             false
-        } else { 
+        } else {
             self.aabb.iter().any(|f| f.collision(other))
         }
     }

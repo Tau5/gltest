@@ -1,5 +1,7 @@
 use std::ffi::CStr;
-use gl::types::{GLfloat, GLint, GLsizei, GLuint};
+use std::ptr;
+use std::ptr::null_mut;
+use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLuint};
 use nalgebra_glm::TVec3;
 use crate::utils::compile_shader;
 use crate::textures::Material;
@@ -10,6 +12,24 @@ pub struct ShaderProgram {
 }
 
 impl ShaderProgram {
+    
+    fn check_program_error(program_id: GLuint) {
+        let mut success: GLint = 1;
+        
+        unsafe {
+            gl::GetProgramiv(program_id, gl::LINK_STATUS, ptr::from_mut(&mut success));
+        }
+
+        if success < 1 {
+            let mut info_log: [u8; 512] = [0; 512];
+            unsafe {
+                gl::GetProgramInfoLog(program_id, 512, null_mut(), ptr::from_mut(&mut info_log) as *mut GLchar);
+            }
+            let info_log = String::from_utf8_lossy(&info_log).replace("\n", "\n\t");
+            panic!("Couldn't link program (Error code {})\n\t{}", success, info_log);
+        }
+    }
+    
     pub fn new(vertex_shader: &str, fragment_shader: &str) -> Self {
         let program_id = unsafe { gl::CreateProgram() };
 
@@ -20,7 +40,10 @@ impl ShaderProgram {
             gl::AttachShader(program_id, vertex);
             gl::AttachShader(program_id, fragment);
             gl::LinkProgram(program_id);
+            Self::check_program_error(program_id);
 
+            gl::DetachShader(program_id, vertex);
+            gl::DetachShader(program_id, fragment);
             gl::DeleteShader(vertex);
             gl::DeleteShader(fragment);
         }

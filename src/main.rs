@@ -22,6 +22,7 @@ use glfw;
 use glfw::ffi::{glfwCreateWindow, glfwGetProcAddress, glfwGetWindowSize, glfwInit, glfwMakeContextCurrent, glfwSetFramebufferSizeCallback, glfwTerminate, glfwWindowHint, glfwWindowShouldClose, GLFWwindow, OPENGL_CORE_PROFILE};
 use std::ffi::{c_int, CString};
 use std::ptr::null_mut;
+use crate::utils::gl_message_callback;
 
 extern "C" fn framebuffer_size_callback(win: *mut GLFWwindow, width: c_int, height: c_int) {
     unsafe {
@@ -76,6 +77,9 @@ fn main() {
             let symbol = CString::new(s).unwrap();
             glfwGetProcAddress(symbol.as_c_str().as_ptr()).cast()
         });
+
+        gl::Enable(gl::DEBUG_OUTPUT);
+        gl::DebugMessageCallback(Some(gl_message_callback), std::ptr::null());
 
         //gl::load_with(|s| window.get_proc_address(s) as *const _);
 

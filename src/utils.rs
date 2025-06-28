@@ -1,8 +1,10 @@
-use std::ffi::{c_char, CString, IntoStringError};
+use std::ffi::{c_char, CStr, CString, IntoStringError};
+use std::os::raw;
 use std::ptr;
 use std::ptr::{null, null_mut};
+use fastrand::u8;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
-use log::info;
+use log::{error, info};
 
 pub fn gen_buffers(n: GLsizei) -> GLuint {
     let mut buf_id: GLuint = 0;
@@ -44,4 +46,29 @@ pub fn compile_shader(shader: &str, type_: GLenum) -> GLuint {
     }
 
     shader_id
+}
+
+pub fn opengl_get_error() {
+    let error = unsafe {
+        gl::GetError()
+    };
+
+    if (error != gl::NO_ERROR) {
+        println!("GL Error: {:#?}", error);
+    }
+}
+
+pub(crate) extern "system" fn gl_message_callback(source: GLenum,
+                                             gltype: GLenum,
+                                             id: GLuint,
+                                             severity: GLenum,
+                                             length: GLsizei,
+                                             message: *const GLchar,
+                                             userParam: *mut raw::c_void) {
+    let string = unsafe {
+        CStr::from_ptr(message)
+    };
+    println!("{}", string.to_str().unwrap());
+    
+    
 }

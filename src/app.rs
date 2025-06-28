@@ -11,19 +11,23 @@ use glfw::ffi::{
     GLFWwindow, glfwGetCursorPos, glfwGetKey, glfwGetTime, glfwPollEvents, glfwSwapBuffers,
 };
 use nalgebra_glm as glm;
-use nalgebra_glm::{TMat4, TVec3};
+use nalgebra_glm::{TMat, TMat4, TVec3};
 use std::ffi::c_double;
 use std::ptr;
 use glfw::Key;
+use image::load;
 use crate::cube::Cube;
 use crate::input::{InputManager, KeyStatus};
+use crate::mesh::Vertex;
 use crate::model::Model;
+use crate::utils::opengl_get_error;
 
 pub struct App {
     objects: Vec<Object>,
     lighting_shader: ShaderProgram,
     lightpoint_shader: ShaderProgram,
     aabb_shader: ShaderProgram,
+    border_shader: ShaderProgram,
 
     camera_speed: GLfloat,
     mouse_sensitivity: c_double,
@@ -47,6 +51,7 @@ impl App {
     pub fn new(window: *mut GLFWwindow, width: usize, height: usize) -> App {
         unsafe {
             gl::Enable(gl::DEPTH_TEST);
+            gl::Enable(gl::STENCIL_TEST);
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
@@ -56,19 +61,26 @@ impl App {
             gl::ClearColor(0.08, 0.25, 0.4, 1.0);
         }
 
+        let vertex_shader_text = include_str!("vertex_shader.glsl");
+
         let lighting_shader = ShaderProgram::new(
-            include_str!("vertex_shader.glsl"),
+            vertex_shader_text,
             include_str!("lighting.glsl"),
         );
 
         let lightpoint_shader = ShaderProgram::new(
-            include_str!("vertex_shader.glsl"),
+            vertex_shader_text,
             include_str!("lightpoint.glsl"),
         );
 
         let aabb_shader = ShaderProgram::new(
             include_str!("vertex_shader.glsl"),
             include_str!("aaab_renderer.glsl"),
+        );
+
+        let border_shader = ShaderProgram::new(
+            include_str!("vertex_shader.glsl"),
+            include_str!("border.glsl"),
         );
 
         let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
@@ -174,7 +186,7 @@ impl App {
         input_manager.add_key(Key::Escape);
 
 
-        unsafe { glfw::ffi::glfwSetInputMode(window, glfw::ffi::CURSOR, glfw::ffi::CURSOR_DISABLED); }
+        //unsafe { glfw::ffi::glfwSetInputMode(window, glfw::ffi::CURSOR, glfw::ffi::CURSOR_DISABLED); }
         Self {
             window,
             last_x: 0.0,
@@ -190,6 +202,7 @@ impl App {
             lighting_shader,
             lightpoint_shader,
             aabb_shader,
+            border_shader,
             material_store,
             light_manager,
             lamp_vao,
@@ -270,6 +283,25 @@ impl App {
         );
 
 
+        let kleiner = Object::from_model(
+            glm::vec3(-2.0, -14.0, 0.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(0.1, 0.1, 0.1),
+            true,
+            Model::new("models/kleiner.glb".into(), "kleiner".into(), material_store),
+            material_store
+        );
+
+        let grass = Object::from_model(
+            glm::vec3(-2.0, -14.0, 3.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(1.0, 1.0, 1.0),
+            true,
+            Model::new("models/grass.glb".into(), "grass".into(), material_store),
+            material_store
+        );
+
+
         objects.push(container);
         objects.push(plane);
         objects.push(beach_sand);
@@ -277,7 +309,9 @@ impl App {
         objects.push(ocean);
         objects.push(fire);
         objects.push(crank);
-        
+        objects.push(kleiner);
+        objects.push(grass);
+
         objects
     }
 
@@ -384,47 +418,7 @@ impl App {
 
             //self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
 
-            unsafe {
-                gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-            }
-
-            // mat3(transpose(inverse(model)))
-
-            self.load_lighting_shader(&view);
-
-            for obj in &self.objects {
-                obj.render(&self.lighting_shader, &self.material_store);
-            }
-
-            self.lightpoint_shader.load();
-            self.lightpoint_shader.setMat4(c"view", &view);
-            self.lightpoint_shader.setMat4(c"projection", &self.proj);
-
-            for light in self.light_manager.iter() {
-                let lightpoint_model = glm::translate(&model, &light.position);
-                let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
-                let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
-
-                self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
-                self.lightpoint_shader
-                    .setMat3(c"normalMatrix", &testcube_normal);
-                self.lightpoint_shader.setVec3(c"color", &light.diffuse);
-
-                self.lamp_vao.render();
-            }
-
-            self.aabb_shader.load();
-            self.aabb_shader.setMat4(c"view", &view);
-            self.aabb_shader.setMat4(c"projection", &self.proj);
-
-            if let Some(obj) = self.objects.get(self.selected_obj) {
-                obj.debug_render_aabb(&self.aabb_shader);
-            }
-
-            unsafe {
-                glfwSwapBuffers(window);
-                glfwPollEvents();
-            }
+            self.render(window, &model, &view);
 
             if (self.mouse_change_counter < 3)
                 && ((self.last_x != current_x) || (self.last_y != current_y))
@@ -434,6 +428,105 @@ impl App {
 
             self.last_x = current_x;
             self.last_y = current_y;
+        }
+    }
+
+    fn render(&mut self, window: &mut GLFWwindow, model: &TMat<f32, 4, 4>, view: &TMat4<GLfloat>) {
+        unsafe {
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
+            gl::Enable(gl::DEPTH_TEST);
+        }
+
+        // mat3(transpose(inverse(model)))
+
+        self.lightpoint_shader.load();
+        self.lightpoint_shader.setMat4(c"view", &view);
+        self.lightpoint_shader.setMat4(c"projection", &self.proj);
+
+        for light in self.light_manager.iter() {
+            let lightpoint_model = glm::translate(&model, &light.position);
+            let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
+            let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
+
+            self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
+            self.lightpoint_shader
+                .setMat3(c"normalMatrix", &testcube_normal);
+            self.lightpoint_shader.setVec3(c"color", &light.diffuse);
+
+            self.lamp_vao.render();
+        }
+
+
+        self.load_lighting_shader(&view);
+
+        unsafe {
+            gl::StencilMask(0x00);
+        }
+        // Render all objects normally except selected
+        for (i, obj) in self.objects.iter().enumerate() {
+            if (i != self.selected_obj) {
+                obj.render(&self.lighting_shader, &self.material_store);
+            }
+        }
+
+        unsafe {
+            // If depth and stencil tests pass, replace value in stencil
+            // with the ref value in StencilFunc.
+            // If any fail, don't change stencil buffer for that fragment
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+
+            // Stencil test ALWAYS passes. Ref value is 1 and because we used
+            // REPLACE in StencilOp, we'll change the stencil value for each fragment
+            // to 1
+            gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
+
+            // Enable writing to the stencil buffer
+            gl::StencilMask(0xFF);
+        }
+
+        // Render all objects normally except selected
+
+        if let Some(obj) = self.objects.get_mut(self.selected_obj) {
+            obj.render(&self.lighting_shader, &self.material_store);
+        }
+
+        unsafe {
+            // Stencil test passes if the fragment wasn't written to
+            gl::StencilFunc(gl::NOTEQUAL, 1, 0xFF);
+
+            // Do NOT write to the stencil buffer
+            gl::StencilMask(0x00);
+
+            // We don't wan't the depth test involved in this
+            //gl::Disable(gl::DEPTH_TEST);
+        }
+
+        self.border_shader.load();
+        self.border_shader.setMat4(c"view", &view);
+        self.border_shader.setMat4(c"projection", &self.proj);
+
+        if let Some(obj) = self.objects.get_mut(self.selected_obj) {
+            obj.render_scaled(&self.border_shader, &self.material_store);
+        }
+
+        unsafe {
+            gl::StencilMask(0xFF);
+            gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
+        }
+
+
+
+        //self.aabb_shader.load();
+        //self.aabb_shader.setMat4(c"view", &view);
+        //self.aabb_shader.setMat4(c"projection", &self.proj);
+
+        //if let Some(obj) = self.objects.get(self.selected_obj) {
+        //    obj.debug_render_aabb(&self.aabb_shader);
+        //}
+
+        unsafe {
+            glfwSwapBuffers(window);
+            glfwPollEvents();
         }
     }
 
