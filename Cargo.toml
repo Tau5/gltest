@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-glfw = "0.59.0"
+glutin = "0.32.3"
+glutin-winit = "0.5.0"
+winit = "0.30.11"
 gl = "0.14.0"
 image = { version = "0.25.6", features = ["default"] }
 nalgebra-glm = "0.19.0"
