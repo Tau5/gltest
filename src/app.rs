@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::error::Error;
 use crate::camera::Camera;
 use crate::cube::Cube;
@@ -15,6 +16,7 @@ use nalgebra_glm as glm;
 use nalgebra_glm::{TMat, TMat4, TVec3};
 use std::ffi::{c_double, CString};
 use std::num::{NonZero, NonZeroU32};
+use std::rc::Rc;
 use glutin::config::{Config, ConfigTemplateBuilder, GetGlConfig, GlConfig};
 use glutin::display::GetGlDisplay;
 use glutin::prelude::{GlDisplay, GlSurface, NotCurrentGlContext, PossiblyCurrentGlContext};
@@ -25,6 +27,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
+use crate::openxr_handler::OpenXRHandler;
 
 struct AppState {
     gl_surface: Surface<WindowSurface>,
@@ -33,12 +36,12 @@ struct AppState {
     window: Window,
 }
 
-struct GlThings {
-    surface: Surface<WindowSurface>,
-    context: glutin::context::PossiblyCurrentContext,
-    display: glutin::display::Display,
-    config: Config,
-    window: Window
+pub struct GlThings {
+    pub surface: Surface<WindowSurface>,
+    pub context: glutin::context::PossiblyCurrentContext,
+    pub display: glutin::display::Display,
+    pub config: Config,
+    pub window: Window
 }
 
 pub struct App {
@@ -70,6 +73,7 @@ pub struct App {
 
     template: ConfigTemplateBuilder,
     exit_state: Result<(), Box<dyn Error>>,
+    openxr_handler: Option<OpenXRHandler>
 }
 
 impl App {
@@ -187,6 +191,8 @@ impl ApplicationHandler for App {
 impl App {
     pub fn new(template: ConfigTemplateBuilder, display_b: DisplayBuilder, event_loop: &EventLoop<()>, width: usize, height: usize) -> App {
         let gl_things = Self::load_gl(template.clone(), display_b, event_loop);
+        let openxr_handler = OpenXRHandler::new(&gl_things);
+
         event_loop.set_control_flow(ControlFlow::Wait);
         gl_things.surface.set_swap_interval(
             &gl_things.context, SwapInterval::Wait(NonZero::new(60).unwrap())
@@ -373,6 +379,7 @@ impl App {
             exit_state: Ok(()),
             gl_things,
             template,
+            openxr_handler: Some(openxr_handler)
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
@@ -483,6 +490,10 @@ impl App {
 
     pub fn game_loop(&mut self) {
         //process_input(window);
+        if let Some(openxr) = &mut self.openxr_handler {
+            openxr.process_events();
+            openxr.wait_frame();
+        }
         let model = glm::identity::<f32, 4>();
 
         if !self.paused {
@@ -588,8 +599,15 @@ impl App {
         let view = self.player.get_view();
 
         //self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
+        
+        let maybe_handler = &mut self.openxr_handler;
+        
+        if let Some(openxr) = maybe_handler {
+            openxr.render(self, &view, &model)
 
-        self.render(&model, &view);
+        } else {
+            self.render(&model, &view);
+        }
 
         if (self.mouse_change_counter < 3)
             && ((self.last_x != self.current_x) || (self.last_y != self.current_y))

@@ -17,6 +17,7 @@ mod geometry;
 mod cube;
 mod util;
 mod world;
+mod openxr_handler;
 
 use std::default::Default;
 use crate::app::App;
