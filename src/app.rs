@@ -28,6 +28,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 use crate::openxr_handler::OpenXRHandler;
+use crate::renderer::{CameraRenderInfo, Renderer, RendererConfig};
+use crate::world::World;
 
 struct AppState {
     gl_surface: Surface<WindowSurface>,
@@ -45,35 +47,22 @@ pub struct GlThings {
 }
 
 pub struct App {
-    objects: Vec<Object>,
-    lighting_shader: ShaderProgram,
-    lightpoint_shader: ShaderProgram,
-    aabb_shader: ShaderProgram,
-    border_shader: ShaderProgram,
-
     camera_speed: GLfloat,
     mouse_sensitivity: c_double,
     last_y: c_double,
     last_x: c_double,
     current_x: c_double,
     current_y: c_double,
-
-    paused: bool,
-    selected_obj: usize,
-    proj: TMat4<f32>,
-    mouse_change_counter: i32,
     player: Player,
-
-    material_store: MaterialStore,
+    paused: bool,
+    mouse_change_counter: i32,
     input_manager: InputManager,
-    light_manager: LightManager,
-    pub lamp_vao: TriangleArrayVAO,
-
-    gl_things: GlThings,
-
-    template: ConfigTemplateBuilder,
+    renderer_config: RendererConfig,
+    renderer: Renderer,
+    world: World,
     exit_state: Result<(), Box<dyn Error>>,
-    openxr_handler: Option<OpenXRHandler>
+    openxr_handler: Option<OpenXRHandler>,
+    proj: TMat4<GLfloat>
 }
 
 impl App {
@@ -169,7 +158,7 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        self.gl_things.window.request_redraw();
+        self.renderer.gl_things.window.request_redraw();
     }
 
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
@@ -191,6 +180,11 @@ impl ApplicationHandler for App {
 impl App {
     pub fn new(template: ConfigTemplateBuilder, display_b: DisplayBuilder, event_loop: &EventLoop<()>, width: usize, height: usize) -> App {
         let gl_things = Self::load_gl(template.clone(), display_b, event_loop);
+        gl::load_with(|s| {
+            let symbol = CString::new(s).unwrap();
+            gl_things.config.display().get_proc_address(symbol.as_c_str()).cast()
+        });
+
         let openxr_handler = OpenXRHandler::new(&gl_things);
 
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -198,13 +192,13 @@ impl App {
             &gl_things.context, SwapInterval::Wait(NonZero::new(60).unwrap())
         ).unwrap();
 
-        gl::load_with(|s| {
-                let symbol = CString::new(s).unwrap();
-                gl_things.config.display().get_proc_address(symbol.as_c_str()).cast()
-            }
+        let proj: TMat4<GLfloat> = glm::perspective(
+            (width / height) as GLfloat,
+            std::f32::consts::TAU / 8.0,
+            0.1,
+            100.0,
         );
-
-        gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::Locked).unwrap();
+        //gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::Locked).unwrap();
 
         unsafe { gl::Viewport(0, 0, 800, 600); }
 
@@ -219,23 +213,6 @@ impl App {
             // Qt.rgba(0.21, 0.38, 0.52, 1)
             gl::ClearColor(0.08, 0.25, 0.4, 1.0);
         }
-
-        let vertex_shader_text = include_str!("vertex_shader.glsl");
-
-        let lighting_shader = ShaderProgram::new(vertex_shader_text, include_str!("lighting.glsl"));
-
-        let lightpoint_shader =
-            ShaderProgram::new(vertex_shader_text, include_str!("lightpoint.glsl"));
-
-        let aabb_shader = ShaderProgram::new(
-            include_str!("vertex_shader.glsl"),
-            include_str!("aaab_renderer.glsl"),
-        );
-
-        let border_shader = ShaderProgram::new(
-            include_str!("vertex_shader.glsl"),
-            include_str!("border.glsl"),
-        );
 
         let camera = Camera::new(3.14 / 2.0, 0.0, glm::vec3(8.0, 0.0, -07.0));
         let player = Player::new(camera);
@@ -274,9 +251,15 @@ impl App {
             ))
             .unwrap();
 
-        let lamp_vao = prefabs::cube();
+        let mut renderer = Renderer::new(
+            width as f32,
+            height as f32,
+            material_store,
+            gl_things,
+            light_manager
+        );
 
-        material_store
+        renderer.material_store
             .load(
                 "container",
                 Some(TextureSource::ImagePath("textures/container2.png".into())),
@@ -290,7 +273,7 @@ impl App {
             )
             .expect("Error loading container material");
 
-        material_store
+        renderer.material_store
             .load(
                 "sand",
                 Some(TextureSource::ImagePath("textures/sand.png".into())),
@@ -300,7 +283,7 @@ impl App {
             )
             .unwrap();
 
-        material_store
+        renderer.material_store
             .load(
                 "water",
                 Some(TextureSource::ImagePath("textures/water.png".into())),
@@ -310,7 +293,7 @@ impl App {
             )
             .unwrap();
 
-        material_store
+        renderer.material_store
             .load(
                 "fogata",
                 Some(TextureSource::ImagePath("textures/fogata.png".into())),
@@ -323,38 +306,13 @@ impl App {
         //let mut lightpoint_pos = glm::vec3(6.0, 0.0, 10.0);
         //let lightpoint_pos = glm::vec3(-0.0, -0.7, -0.7);
 
-        let objects = Self::generate_objects(&mut material_store);
-
-        let proj = glm::perspective(
-            width as f32 / height as f32,
-            std::f32::consts::TAU / 8.0,
-            0.1,
-            100.0,
-        );
-
+        let world = World::new(&mut renderer.material_store);
         let mut input_manager = InputManager::new();
+        let renderer_config = RendererConfig {
+            selected_obj: 0
+        };
 
-        //input_manager.add_key(Key::Character("w".into()));
-        //input_manager.add_key(Key::Character("a".into()));
-        //input_manager.add_key(Key::Character("s".into()));
-        //input_manager.add_key(Key::Character("d".into()));
-        //input_manager.add_key(Key::Character("h".into()));
-        //input_manager.add_key(Key::Character("j".into()));
-        //input_manager.add_key(Key::Character("k".into()));
-        //input_manager.add_key(Key::Character("l".into()));
-        //input_manager.add_key(Key::Character("f".into()));
-        //input_manager.add_key(Key::Character("z".into()));
-        //input_manager.add_key(Key::Character("x".into()));
-        //input_manager.add_key(Key::Character("c".into()));
-        //input_manager.add_key(Key::Character("v".into()));
-        //input_manager.add_key(Key::Character("b".into()));
-        //input_manager.add_key(Key::Character("n".into()));
-        //input_manager.add_key(Key::Character("m".into()));
-        //input_manager.add_key(Key::Named(NamedKey::ArrowLeft));
-        //input_manager.add_key(Key::Named(NamedKey::ArrowRight));
-        //input_manager.add_key(Key::Named(NamedKey::Escape));
 
-        //unsafe { glfw::ffi::glfwSetInputMode(window, glfw::ffi::CURSOR, glfw::ffi::CURSOR_DISABLED); }
         Self {
             last_x: 0.0,
             last_y: 0.0,
@@ -364,134 +322,26 @@ impl App {
             mouse_sensitivity: 0.01,
             mouse_change_counter: 0,
             paused: false,
-            selected_obj: 0,
             player,
-            proj,
-            objects,
-            lighting_shader,
-            lightpoint_shader,
-            aabb_shader,
-            border_shader,
-            material_store,
-            light_manager,
-            lamp_vao,
             input_manager,
             exit_state: Ok(()),
-            gl_things,
-            template,
-            openxr_handler: Some(openxr_handler)
+            openxr_handler: Some(openxr_handler),
+            renderer_config,
+            renderer,
+            world,
+            proj
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
-    }
-
-    fn generate_objects(mut material_store: &mut MaterialStore) -> Vec<Object> {
-        let testcube_pos = glm::vec3(8.0, 0.0, -2.0);
-        let plane_pos = glm::vec3(8.0, -5.0, -2.0);
-        let mut model_test = Model::new(
-            "models/example.glb".into(),
-            "kit".into(),
-            &mut material_store,
-        );
-
-        let mut objects = Vec::new();
-
-        let container = Object::new(
-            testcube_pos,
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(2.0, 1.0, 2.0),
-            Box::from(Cube::new(material_store.get("container"))),
-            true,
-        );
-
-        let plane = Object::new(
-            plane_pos,
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(10.0, 1.0, 10.0),
-            Box::from(Cube::new(material_store.get("box"))),
-            true,
-        );
-
-        let beach_sand = Object::new(
-            glm::vec3(0.0, -15.0, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(40.0, 0.1, 20.0),
-            Box::from(Cube::new(material_store.get("sand"))),
-            true,
-        );
-
-        let beach_waterbed = Object::new(
-            glm::vec3(0.0, -20.0, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(70.0, 0.1, 70.0),
-            Box::from(Cube::new(material_store.get("sand"))),
-            true,
-        );
-
-        let ocean = Object::new(
-            glm::vec3(0.0, -15.1, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(100.0, 0.1, 100.0),
-            Box::from(Cube::new(material_store.get("water"))),
-            true,
-        );
-
-        let fire = Object::from_model(
-            glm::vec3(-5.0, -14.0, -5.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(1.0, 1.0, 1.0),
-            true,
-            model_test,
-            material_store,
-        );
-
-        let crank = Object::from_model(
-            glm::vec3(-2.0, -14.0, -5.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(0.1, 0.1, 0.1),
-            true,
-            Model::new("models/crank.glb".into(), "crank".into(), material_store),
-            material_store,
-        );
-
-        let kleiner = Object::from_model(
-            glm::vec3(-2.0, -14.0, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(0.1, 0.1, 0.1),
-            true,
-            Model::new(
-                "models/kleiner.glb".into(),
-                "kleiner".into(),
-                material_store,
-            ),
-            material_store,
-        );
-
-        let grass = Object::from_model(
-            glm::vec3(-2.0, -14.0, 3.0),
-            glm::vec3(0.0, 0.0, 0.0),
-            glm::vec3(1.0, 1.0, 1.0),
-            true,
-            Model::new("models/grass.glb".into(), "grass".into(), material_store),
-            material_store,
-        );
-
-        objects.push(container);
-        objects.push(plane);
-        objects.push(beach_sand);
-        objects.push(beach_waterbed);
-        objects.push(ocean);
-        objects.push(fire);
-        objects.push(crank);
-        objects.push(kleiner);
-        objects.push(grass);
-
-        objects
     }
 
     pub fn game_loop(&mut self) {
         //process_input(window);
         if let Some(openxr) = &mut self.openxr_handler {
             openxr.process_events();
+
+            if (!openxr.do_framecycle) {
+               return;
+            }
             openxr.wait_frame();
         }
         let model = glm::identity::<f32, 4>();
@@ -538,21 +388,21 @@ impl App {
                     move_z -= self.camera_speed;
                 }
                 if self.input_manager.get_status(Key::Named(NamedKey::ArrowLeft)) == KeyStatus::JustPressed {
-                    if self.selected_obj > 0 {
-                        self.selected_obj -= 1;
+                    if self.renderer_config.selected_obj > 0 {
+                        self.renderer_config.selected_obj -= 1;
                     }
                 }
                 if self.input_manager.get_status(Key::Named(NamedKey::ArrowRight)) == KeyStatus::JustPressed {
-                    if self.selected_obj < self.objects.len() - 1 {
-                        self.selected_obj += 1;
+                    if self.renderer_config.selected_obj < self.world.objects.len() - 1 {
+                        self.renderer_config.selected_obj += 1;
                     }
                 }
 
                 if self.input_manager.get_status(Key::Character("f".into())) == KeyStatus::JustPressed {
-                    self.light_manager.toggle_spotlight();
+                    self.renderer.light_manager.toggle_spotlight();
                 }
 
-                if let Some(obj) = self.objects.get_mut(self.selected_obj) {
+                if let Some(obj) = self.world.objects.get_mut(self.renderer_config.selected_obj) {
                     if self.input_manager.get_status(Key::Character("i".into())) == KeyStatus::JustPressed {
                         obj.scale(0.1, 0.0, 0.0);
                     }
@@ -570,8 +420,8 @@ impl App {
                     //    glfw::ffi::CURSOR,
                     //    glfw::ffi::CURSOR_NORMAL,
                     //);
-                    self.gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::None).unwrap();
-                    self.gl_things.window.set_cursor_visible(true);
+                    self.renderer.gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::None).unwrap();
+                    self.renderer.gl_things.window.set_cursor_visible(true);
                     self.mouse_change_counter = 0;
                 } else {
                     //glfw::ffi::glfwSetInputMode(
@@ -579,19 +429,19 @@ impl App {
                     //    glfw::ffi::CURSOR,
                     //    glfw::ffi::CURSOR_DISABLED,
                     //);
-                    self.gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::Locked).unwrap();
-                    self.gl_things.window.set_cursor_visible(false);
+                    self.renderer.gl_things.window.set_cursor_grab(winit::window::CursorGrabMode::Locked).unwrap();
+                    self.renderer.gl_things.window.set_cursor_visible(false);
                 }
             }
 
             if self.input_manager.get_status(Key::Character("z".into())) == KeyStatus::JustPressed {
-                self.light_manager.directional_light.direction = self.player.get_front();
+                self.renderer.light_manager.directional_light.direction = self.player.get_front();
             }
-            if let Some(light) = self.light_manager.get_mut_pointlight(0) {}
+            if let Some(light) = self.renderer.light_manager.get_mut_pointlight(0) {}
         }
 
-        self.player.translate(move_x, move_z, &self.objects);
-        self.player.apply_gravity(-0.27, &self.objects);
+        self.player.translate(move_x, move_z, &self.world.objects);
+        self.player.apply_gravity(-0.27, &self.world.objects);
         self.player.rotate_camera(
             (mouse_x * self.mouse_sensitivity) as f32,
             -(mouse_y * self.mouse_sensitivity) as f32,
@@ -599,14 +449,38 @@ impl App {
         let view = self.player.get_view();
 
         //self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
-        
-        let maybe_handler = &mut self.openxr_handler;
-        
-        if let Some(openxr) = maybe_handler {
-            openxr.render(self, &view, &model)
 
-        } else {
-            self.render(&model, &view);
+        let maybe_handler = &mut self.openxr_handler;
+
+        if let Some(openxr) = maybe_handler {
+            openxr.render(
+                &mut self.renderer,
+                &mut self.world,
+                &view,
+                &model,
+                &self.renderer_config,
+                CameraRenderInfo {
+                    front: self.player.get_front(),
+                    position: self.player.get_position()
+                }
+            )
+        }
+        {
+            self.renderer.render(
+                &mut self.world,
+                &view,
+                &model,
+                &self.renderer_config,
+                CameraRenderInfo {
+                    front: self.player.get_front(),
+                    position: self.player.get_position()
+                },
+                &self.proj
+            );
+
+            unsafe {
+                self.renderer.gl_things.surface.swap_buffers(&self.renderer.gl_things.context).unwrap()
+            }
         }
 
         if (self.mouse_change_counter < 3)
@@ -621,129 +495,5 @@ impl App {
         self.input_manager.update_keys();
     }
 
-    fn render(&mut self, model: &TMat<f32, 4, 4>, view: &TMat4<GLfloat>) {
-        unsafe {
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
-            gl::Enable(gl::DEPTH_TEST);
-        }
 
-        // mat3(transpose(inverse(model)))
-
-        self.lightpoint_shader.load();
-        self.lightpoint_shader.setMat4(c"view", &view);
-        self.lightpoint_shader.setMat4(c"projection", &self.proj);
-
-        for light in self.light_manager.iter() {
-            let lightpoint_model = glm::translate(&model, &light.position);
-            let lightpoint_model = glm::scale(&lightpoint_model, &glm::vec3(0.25, 0.25, 0.25));
-            let testcube_normal = glm::mat4_to_mat3(&glm::inverse_transpose(lightpoint_model));
-
-            self.lightpoint_shader.setMat4(c"model", &lightpoint_model);
-            self.lightpoint_shader
-                .setMat3(c"normalMatrix", &testcube_normal);
-            self.lightpoint_shader.setVec3(c"color", &light.diffuse);
-
-            self.lamp_vao.render();
-        }
-
-        self.load_lighting_shader(&view);
-
-        unsafe {
-            gl::StencilMask(0x00);
-        }
-        // Render all objects normally except selected
-        for (i, obj) in self.objects.iter().enumerate() {
-            if (i != self.selected_obj) {
-                obj.render(&self.lighting_shader, &self.material_store);
-            }
-        }
-
-        unsafe {
-            // If depth and stencil tests pass, replace value in stencil
-            // with the ref value in StencilFunc.
-            // If any fail, don't change stencil buffer for that fragment
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
-
-            // Stencil test ALWAYS passes. Ref value is 1 and because we used
-            // REPLACE in StencilOp, we'll change the stencil value for each fragment
-            // to 1
-            gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
-
-            // Enable writing to the stencil buffer
-            gl::StencilMask(0xFF);
-        }
-
-        // Render all objects normally except selected
-
-        if let Some(obj) = self.objects.get_mut(self.selected_obj) {
-            obj.render(&self.lighting_shader, &self.material_store);
-        }
-
-        unsafe {
-            // Stencil test passes if the fragment wasn't written to
-            gl::StencilFunc(gl::NOTEQUAL, 1, 0xFF);
-
-            // Do NOT write to the stencil buffer
-            gl::StencilMask(0x00);
-
-            // We don't wan't the depth test involved in this
-            //gl::Disable(gl::DEPTH_TEST);
-        }
-
-        self.border_shader.load();
-        self.border_shader.setMat4(c"view", &view);
-        self.border_shader.setMat4(c"projection", &self.proj);
-
-        if let Some(obj) = self.objects.get_mut(self.selected_obj) {
-            obj.render_scaled(&self.border_shader, &self.material_store);
-        }
-
-        unsafe {
-            gl::StencilMask(0xFF);
-            gl::StencilFunc(gl::ALWAYS, 1, 0xFF);
-        }
-
-        //self.aabb_shader.load();
-        //self.aabb_shader.setMat4(c"view", &view);
-        //self.aabb_shader.setMat4(c"projection", &self.proj);
-
-        //if let Some(obj) = self.objects.get(self.selected_obj) {
-        //    obj.debug_render_aabb(&self.aabb_shader);
-        //}
-
-        unsafe {
-            self.gl_things.surface.swap_buffers(&self.gl_things.context).unwrap()
-        }
-    }
-
-    fn load_lighting_shader(&mut self, view: &TMat4<GLfloat>) {
-        self.lighting_shader.load();
-        self.lighting_shader.setMat4(c"view", &view);
-        self.lighting_shader.setMat4(c"projection", &self.proj);
-        self.lighting_shader
-            .setVec3(c"viewPos", &self.player.get_position());
-
-        if let Some(spot_light) = &mut self.light_manager.spot_light {
-            spot_light.position = self.player.get_position();
-            spot_light.direction = self.player.get_front();
-        }
-
-        self.light_manager.load_lights(&self.lighting_shader);
-
-        ////let mut light_vector = glm::vec3_to_vec4(&self.lightpoint_pos);
-        //let mut light_vector = glm::vec3_to_vec4(&self.player.get_position());
-        //let spotlight_direction = &self.player.get_front();
-        //light_vector.w = 1.0;
-
-        //self.lighting_shader.setVec4(c"light.vector", &light_vector);
-        //self.lighting_shader.setVec3(c"light.ambient", &self.ambient_color);
-        //self.lighting_shader.setVec3(c"light.diffuse", &self.diffuse_color); // darken diuse light a bit
-        //self.lighting_shader.setVec3(c"light.specular", &self.diffuse_color);
-        //self.lighting_shader.setFloat(c"light.constant", 1.0);
-        //self.lighting_shader.setFloat(c"light.linear", 0.045);
-        //self.lighting_shader.setFloat(c"light.quadratic", 0.0075);
-        //self.lighting_shader.setVec3(c"light.spotlightDirection", &spotlight_direction);
-        //self.lighting_shader.setFloat(c"light.spAngleInner", f32::cos(0.21));
-        //self.lighting_shader.setFloat(c"light.spAngleOuter", f32::cos(0.27));
-    }
 }

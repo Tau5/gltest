@@ -1927,7 +1927,6 @@ dependencies = [
  "glutin-winit",
  "glutin_glx_sys 0.2.0",
  "image",
- "log",
  "nalgebra-glm",
  "openxr",
  "russimp",

@@ -1,13 +1,18 @@
+use std::any::Any;
 use std::ffi::c_void;
 use std::ptr;
-use gl::types::{GLfloat, GLuint};
+use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use glutin::config::AsRawConfig;
-use nalgebra_glm::{TMat, TMat4};
+use glutin::prelude::GlSurface;
+use nalgebra_glm::{proj, Mat4, TMat, TMat4, TVec3, TVec4};
 use openxr as xr;
 use openxr::{EnvironmentBlendMode, Event, ExtensionSet, FrameStream, FrameWaiter, Instance, OpenGL, SessionState, SessionStateChanged, Space, Swapchain, SystemId, ViewConfigurationView};
 use openxr::sys::create_swapchain;
 use crate::app::{App, GlThings};
+use crate::renderer::{CameraRenderInfo, Renderer, RendererConfig};
 use crate::util;
+use crate::world::World;
+use nalgebra_glm as glm;
 
 struct HandlerFrameState {
     xr_state: xr::FrameState,
@@ -28,10 +33,13 @@ pub struct OpenXRHandler {
     pub frame_state: Option<HandlerFrameState>,
     pub reference_space: Space,
     pub view_configuration_views: Vec<ViewConfigurationView>,
+    pub do_framecycle: bool,
+    pub resolution_multiplier: f32
 }
 
 impl OpenXRHandler {
     pub fn new(gl_things: &GlThings) -> Self {
+        let resolution_multiplier = 0.25;
         let application_info = xr::ApplicationInfo {
             application_name: "glTest OpenXR Application",
             application_version: 1,
@@ -40,19 +48,21 @@ impl OpenXRHandler {
             api_version: openxr::CURRENT_API_VERSION,
         };
 
+        println!("Creating instance");
         let instance = Self::create_instance(&application_info);
 
+        println!("Acquiring system id");
         let system = instance
             .system(xr::FormFactor::HEAD_MOUNTED_DISPLAY)
-            .unwrap();
+            .expect("Couldn't get system id");
 
-        let system_properties = instance.system_properties(system).unwrap();
+        let system_properties = instance.system_properties(system).expect("Couldn't get sys prop");
 
         let view_configuration_views = Self::get_view_configuration_views(
             &instance, &system,
         );
 
-        let reqs = instance.graphics_requirements::<xr::OpenGL>(system).unwrap();
+        let reqs = instance.graphics_requirements::<xr::OpenGL>(system).expect("Couldn't get graphics requirements");
 
         let session_create_info = util::session_create_info(&gl_things.context, &gl_things.window).unwrap();
 
@@ -63,7 +73,7 @@ impl OpenXRHandler {
             ).unwrap()
         };
 
-        let (swapchains, images, gl_framebuffers) = Self::create_swapchains(&session, &view_configuration_views);
+        let (swapchains, images, gl_framebuffers) = Self::create_swapchains(&session, &view_configuration_views, resolution_multiplier);
 
         let space = Self::create_reference_space(&session);
 
@@ -80,6 +90,8 @@ impl OpenXRHandler {
             reference_space: space,
             view_configuration_views,
             frame_state: None,
+            do_framecycle: false,
+            resolution_multiplier
         }
     }
 
@@ -102,13 +114,19 @@ impl OpenXRHandler {
         ).unwrap()
     }
 
-    fn create_swapchains(session: &xr::Session<xr::OpenGL>, views: &Vec<xr::ViewConfigurationView>) -> (Vec<Swapchain<OpenGL>>, Vec<Vec<u32>>, Vec<GLuint>) {
+    fn create_swapchains(session: &xr::Session<xr::OpenGL>, views: &Vec<xr::ViewConfigurationView>, resolution_multiplier: f32) -> (Vec<Swapchain<OpenGL>>, Vec<Vec<u32>>, Vec<GLuint>) {
         let swapchain_formats = session.enumerate_swapchain_formats().unwrap();
 
         let color_swapchain_format = swapchain_formats
             .iter()
             .copied()
             .find(|&f| f == gl::SRGB8_ALPHA8)
+            .unwrap_or(swapchain_formats[0]);
+        
+        let depth_swapchain_format = swapchain_formats
+            .iter()
+            .copied()
+            .find(|&f| f == gl::DEPTH32F_STENCIL8)
             .unwrap_or(swapchain_formats[0]);
 
         let mut swapchains = vec!();
@@ -120,12 +138,14 @@ impl OpenXRHandler {
                 usage_flags: xr::SwapchainUsageFlags::SAMPLED | xr::SwapchainUsageFlags::COLOR_ATTACHMENT,
                 format: color_swapchain_format,
                 sample_count: view.recommended_swapchain_sample_count,
-                width: view.recommended_image_rect_width,
-                height: view.recommended_image_rect_height,
+                width: (view.recommended_image_rect_width as f32 * resolution_multiplier) as u32,
+                height: (view.recommended_image_rect_height as f32 * resolution_multiplier) as u32,
                 face_count: 1,
                 array_size: 1,
                 mip_count: 1,
             }).unwrap();
+            
+            
 
             let sp_images = swapchain.enumerate_images().unwrap();
 
@@ -181,19 +201,34 @@ impl OpenXRHandler {
         instance
     }
 
-    pub fn process_events(&self) {
+    pub fn process_events(&mut self) {
         let mut data_buffer = xr::EventDataBuffer::new();
         while let Some(event) = self.instance.poll_event(&mut data_buffer).unwrap() {
             match event {
                 Event::SessionStateChanged(state_change) => {
                     match state_change.state() {
                         SessionState::READY => {
+                            println!("\n[INFO] [STATE] READY!");
                             self.session.begin(xr::ViewConfigurationType::PRIMARY_STEREO).unwrap();
-                        }
-                        _ => todo!(),
+                            self.do_framecycle = true;
+                        },
+                        SessionState::IDLE => {
+                            println!("\n[INFO] [STATE] IDLE");
+                            self.do_framecycle = false;
+                        },
+                        SessionState::UNKNOWN => {
+                            println!("\n[INFO] [STATE] UNKNOWN");
+                            self.do_framecycle = false;
+                        },
+                        ev => {
+                            println!("\n[INFO] [UNHANDLED SESSION STATE] {:?}", ev)
+                        },
                     }
                 }
-                _ => {}
+                ev => {
+                    println!("\n[INFO] [UNHANDLED EVENT]");
+                }
+
             }
         }
         //   fun(event);
@@ -202,7 +237,10 @@ impl OpenXRHandler {
     }
 
     pub fn wait_frame(&mut self) {
+        println!("Frame wait!");
         let frame_state = self.frame_wait.wait().unwrap();
+
+        println!("State: ${:?}", frame_state);
 
         let (view_flags, views) = self.session
             .locate_views(
@@ -223,75 +261,201 @@ impl OpenXRHandler {
         self.frame_stream.begin().unwrap();
     }
 
-    pub fn render(&mut self, app: &mut App, glmodel: &TMat4<GLfloat>, glview: &TMat<f32, 4, 4>) {
-        for (view_idx, view) in self.view_configuration_views.iter().enumerate() {
-            let xr_swapchain_img_idx = self.swapchains[view_idx].acquire_image().unwrap();
-            let gl_framebuffer = self.gl_framebuffers[view_idx];
-            unsafe {
-                gl::BindFramebuffer(gl::FRAMEBUFFER, gl_framebuffer);
+    pub fn render(&mut self, renderer: &mut Renderer, world: &mut World, glview: &TMat4<GLfloat>, glmodel: &TMat4<GLfloat>, renderer_config: &RendererConfig, camera_render_info: CameraRenderInfo) {
+        self.begin_frame();
+        if let Some(state) = &self.frame_state {
 
-                gl::Viewport(0, 0,
-                             view.recommended_image_rect_width as i32,
-                             view.recommended_image_rect_height as i32);
+            for (view_idx, view) in self.view_configuration_views.iter().enumerate() {
+                if !state.xr_state.should_render {
+                    continue;
+                }
+                let qua = glm::quat(
+                    state.views[view_idx].pose.orientation.x,
+                    state.views[view_idx].pose.orientation.y,
+                    state.views[view_idx].pose.orientation.z,
+                    state.views[view_idx].pose.orientation.w,
+                );
+                let pos: TVec3<f32> = glm::vec3(
+                    state.views[view_idx].pose.position.x + camera_render_info.position.x,
+                    state.views[view_idx].pose.position.y+ camera_render_info.position.y,
+                    state.views[view_idx].pose.position.z+ camera_render_info.position.z,
+                );
+                let proj = make_proj(state.views[view_idx].fov, 0.01, 100.0);
+                //let proj = glm::perspective_fov(
+                //    state.views[view_idx].fov.angle_up * 2.0,
+                //    (view.recommended_image_rect_width as f32 * self.resolution_multiplier),
+                //    (view.recommended_image_rect_height as f32 * self.resolution_multiplier),
+                //    0.01, 100.0
+                //);
+                let rotmat: TMat4<GLfloat> = glm::quat_to_mat4(&qua);
+                let transmat: TMat4<GLfloat> = glm::translation(&pos);
+                let viewmat = transmat * rotmat;
+                let viewmat = glm::inverse(&viewmat);
 
-                gl::Scissor(0, 0,
-                            view.recommended_image_rect_width as i32,
-                            view.recommended_image_rect_height as i32);
+                let xr_swapchain_img_idx = self.swapchains[view_idx].acquire_image().unwrap();
+                self.swapchains[view_idx].wait_image(xr::Duration::INFINITE).unwrap();
+
+                let gl_framebuffer = self.gl_framebuffers[view_idx];
+                unsafe {
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, gl_framebuffer);
+                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, self.images[view_idx][xr_swapchain_img_idx as usize], 0);
+
+                    gl::Viewport(0, 0,
+                                 (view.recommended_image_rect_width as f32 * self.resolution_multiplier) as GLsizei,
+                                 (view.recommended_image_rect_height as f32 * self.resolution_multiplier) as GLsizei);
+
+                    gl::Scissor(0, 0,
+                                (view.recommended_image_rect_width as f32 * self.resolution_multiplier) as GLsizei,
+                                (view.recommended_image_rect_height as f32 * self.resolution_multiplier) as GLsizei);
+                }
+
+                //let texture = self.images[view_idx][xr_swapchain_img_idx as usize];
+                //let texture = unsafe {
+                //    gl::CreateTe
+                //}
+
+                //app.render(&glmodel, &glview);
+                renderer.render(
+                    world,
+                    &viewmat,
+                    &glmodel,
+                    renderer_config,
+                    camera_render_info,
+                    &proj
+                );
+
+                unsafe {
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                }
+
+                //if (view_idx == 0) {
+                //    unsafe {
+                //        gl::BlitNamedFramebuffer(self.gl_framebuffers[0],
+                //                                 0, 0, 0, view.recommended_image_rect_width as GLint, view.recommended_image_rect_height as GLint, 800, 600, gl::COLOR_BUFFER_BIT as GLint, gl::LINEAR as GLint, 0, 0);
+
+                //        renderer.gl_things.surface.swap_buffers(&renderer.gl_things.context);
+                //    }
+                //}
+
+                self.swapchains[view_idx].release_image();
             }
-
-            //let texture = self.images[view_idx][xr_swapchain_img_idx as usize];
-            //let texture = unsafe {
-            //    gl::CreateTe
-            //}
-
-            app.render(&glmodel, &glview);
-
-            self.swapchains[view_idx].release_image();
+            self.end_frame(state.xr_state.predicted_display_time);;
         }
     }
 
     pub fn end_frame(&mut self, display_time: xr::Time) {
         if let Some(state) = &self.frame_state {
-            self.frame_stream
-                .end(
-                    state.xr_state.predicted_display_time,
-                    xr::EnvironmentBlendMode::OPAQUE,
-                    &[&openxr::CompositionLayerProjection::new()
-                        .space(&self.reference_space)
-                        .views(&[
-                            openxr::CompositionLayerProjectionView::new()
-                                .pose(state.views[0].pose)
-                                .fov(state.views[0].fov)
-                                .sub_image(
-                                    openxr::SwapchainSubImage::new()
-                                        .swapchain(&self.swapchains[0])
-                                        .image_array_index(0)
-                                        .image_rect(openxr::Rect2Di {
-                                            offset: openxr::Offset2Di { x: 0, y: 0 },
-                                            extent: xr::Extent2Di {
-                                                width: self.view_configuration_views[0].recommended_image_rect_width as i32,
-                                                height: self.view_configuration_views[0].recommended_image_rect_height as i32,
-                                            },
-                                        }),
-                                ),
-                            openxr::CompositionLayerProjectionView::new()
-                                .pose(state.views[1].pose)
-                                .fov(state.views[1].fov)
-                                .sub_image(
-                                    openxr::SwapchainSubImage::new()
-                                        .swapchain(&self.swapchains[1])
-                                        .image_array_index(1)
-                                        .image_rect(openxr::Rect2Di {
-                                            offset: openxr::Offset2Di { x: 0, y: 0 },
-                                            extent: xr::Extent2Di {
-                                                width: self.view_configuration_views[1].recommended_image_rect_width as i32,
-                                                height: self.view_configuration_views[1].recommended_image_rect_height as i32,
-                                            },
-                                        }),
-                                ),
-                        ])],
-                )
-                .unwrap();
+            if (state.xr_state.should_render) {
+                self.frame_stream
+                    .end(
+                        state.xr_state.predicted_display_time,
+                        xr::EnvironmentBlendMode::OPAQUE,
+                        &[&openxr::CompositionLayerProjection::new()
+                            .space(&self.reference_space)
+                            .views(&[
+                                openxr::CompositionLayerProjectionView::new()
+                                    .pose(state.views[1].pose)
+                                    .fov(state.views[1].fov)
+                                    .sub_image(
+                                        openxr::SwapchainSubImage::new()
+                                            .swapchain(&self.swapchains[1])
+                                            .image_array_index(0)
+                                            .image_rect(openxr::Rect2Di {
+                                                offset: openxr::Offset2Di { x: 0, y: 0 },
+                                                extent: xr::Extent2Di {
+                                                    width: (self.view_configuration_views[0].recommended_image_rect_width as f32 * self.resolution_multiplier) as i32,
+                                                    height: (self.view_configuration_views[0].recommended_image_rect_height as f32 * self.resolution_multiplier) as i32,
+                                                },
+                                            }),
+                                    ),
+                                openxr::CompositionLayerProjectionView::new()
+                                    .pose(state.views[0].pose)
+                                    .fov(state.views[0].fov)
+                                    .sub_image(
+                                        openxr::SwapchainSubImage::new()
+                                            .swapchain(&self.swapchains[0])
+                                            .image_array_index(0)
+                                            .image_rect(openxr::Rect2Di {
+                                                offset: openxr::Offset2Di { x: 0, y: 0 },
+                                                extent: xr::Extent2Di {
+                                                    width: (self.view_configuration_views[1].recommended_image_rect_width as f32 * self.resolution_multiplier) as i32,
+                                                    height: (self.view_configuration_views[1].recommended_image_rect_height as f32 * self.resolution_multiplier) as i32,
+                                                },
+                                            }),
+                                    ),
+                            ])],
+                    )
+                    .unwrap();
+            } else {
+                self.frame_stream.end(state.xr_state.predicted_display_time, EnvironmentBlendMode::OPAQUE, &[]).unwrap()
+            }
         }
     }
+}
+
+pub fn make_proj(fov: xr::Fovf, nearZ: f32, farZ: f32) -> Mat4 {
+    let tanAngleLeft = f32::tan(fov.angle_left);
+    let tanAngleRight = f32::tan(fov.angle_right);
+
+    let tanAngleDown = f32::tan(fov.angle_down);
+    let tanAngleUp = f32::tan(fov.angle_up);
+
+    let tanAngleWidth = tanAngleRight - tanAngleLeft;
+
+    // Set to tanAngleDown - tanAngleUp for a clip space with positive Y
+    // down (Vulkan). Set to tanAngleUp - tanAngleDown for a clip space with
+    // positive Y up (OpenGL / D3D / Metal).
+    let tanAngleHeight = (tanAngleUp - tanAngleDown);
+
+    // Set to nearZ for a [-1,1] Z clip space (OpenGL / OpenGL ES).
+    // Set to zero for a [0,1] Z clip space (Vulkan / D3D / Metal).
+    let offsetZ = nearZ;
+
+    let mut result = Mat4::identity();
+
+    if (farZ <= nearZ) {
+        // place the far plane at infinity
+        result.m11 = 2.0 / tanAngleWidth;
+        result.m12 = 0.0;
+        result.m13 = (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+        result.m14 = 0.0;
+
+        result.m21 = 0.0;
+        result.m22 = 2.0 / tanAngleHeight;
+        result.m23 = (tanAngleUp + tanAngleDown) / tanAngleHeight;
+        result.m24 = 0.0;
+
+        result.m31 = 0.0;
+        result.m32 = 0.0;
+        result.m33 = -1.0;
+        result.m34 = -(nearZ + offsetZ);
+
+        result.m41 = 0.0;
+        result.m42 = 0.0;
+        result.m43 = -1.0;
+        result.m44 = 0.0;
+    } else {
+        // normal projection
+        result.m11= 2.0 / tanAngleWidth;
+        result.m12= 0.0;
+        result.m13= (tanAngleRight + tanAngleLeft) / tanAngleWidth;
+        result.m14 = 0.0;
+
+        result.m21= 0.0;
+        result.m22= 2.0 / tanAngleHeight;
+        result.m23= (tanAngleUp + tanAngleDown) / tanAngleHeight;
+        result.m24 = 0.0;
+
+        result.m31= 0.0;
+        result.m32= 0.0;
+        result.m33 = -(farZ + offsetZ) / (farZ - nearZ);
+        result.m34 = -(farZ * (nearZ + offsetZ)) / (farZ - nearZ);
+
+        result.m41= 0.0;
+        result.m42= 0.0;
+        result.m43 = -1.0;
+        result.m44 = 0.0;
+    }
+
+    result
 }

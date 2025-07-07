@@ -4,7 +4,6 @@ use std::ptr;
 use std::ptr::{null, null_mut};
 use fastrand::u8;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint};
-use log::{error, info};
 
 pub fn gen_buffers(n: GLsizei) -> GLuint {
     let mut buf_id: GLuint = 0;
