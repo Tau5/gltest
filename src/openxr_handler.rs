@@ -200,7 +200,7 @@ impl OpenXRHandler {
             }
         }
 
-        let layers_str: Vec<&str> = layers.iter().map(|l| l.layer_name.as_str()).collect();
+        let layers_str: Vec<&str> = Vec::new(); //layers.iter().map(|l| l.layer_name.as_str()).collect();
 
         let mut extensions = ExtensionSet::default();
 
@@ -251,10 +251,7 @@ impl OpenXRHandler {
     }
 
     pub fn wait_frame(&mut self) {
-        println!("Frame wait!");
         let frame_state = self.frame_wait.wait().unwrap();
-
-        println!("State: ${:?}", frame_state);
 
         let (view_flags, views) = self.session
             .locate_views(
