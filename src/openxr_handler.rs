@@ -126,7 +126,7 @@ impl OpenXRHandler {
         let depth_swapchain_format = swapchain_formats
             .iter()
             .copied()
-            .find(|&f| f == gl::DEPTH32F_STENCIL8)
+            .find(|&f| f == gl::DEPTH_COMPONENT32F)
             .unwrap_or(swapchain_formats[0]);
 
         let mut swapchains = vec!();
@@ -144,17 +144,31 @@ impl OpenXRHandler {
                 array_size: 1,
                 mip_count: 1,
             }).unwrap();
-            
-            
+
+            let swapchain_depth = session.create_swapchain(&xr::SwapchainCreateInfo::<xr::OpenGL> {
+                create_flags: xr::SwapchainCreateFlags::EMPTY,
+                usage_flags: xr::SwapchainUsageFlags::SAMPLED | xr::SwapchainUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                format: depth_swapchain_format,
+                sample_count: view.recommended_swapchain_sample_count,
+                width: (view.recommended_image_rect_width as f32 * resolution_multiplier) as u32,
+                height: (view.recommended_image_rect_height as f32 * resolution_multiplier) as u32,
+                face_count: 1,
+                array_size: 1,
+                mip_count: 1,
+            }).unwrap();
 
             let sp_images = swapchain.enumerate_images().unwrap();
+            let spd_images = swapchain_depth.enumerate_images().unwrap();
 
             images.push(sp_images);
             swapchains.push(swapchain);
+            
+            images.push(spd_images);
+            swapchains.push(swapchain_depth);
         }
 
         let mut gl_framebuffers = vec![];
-        for _ in views {
+        for _ in &images {
             let mut fb_id: GLuint = 0;
             unsafe {
                 gl::CreateFramebuffers(1, ptr::from_mut(&mut fb_id));
@@ -178,7 +192,7 @@ impl OpenXRHandler {
         let available_extensions = entry.enumerate_extensions().unwrap();
         let layers = entry.enumerate_layers().unwrap();
 
-        if (!available_extensions.ext_debug_utils || !available_extensions.khr_opengl_enable) {
+        if (!available_extensions.ext_debug_utils || !available_extensions.khr_opengl_enable ) {
             if (!available_extensions.ext_debug_utils) {
                 panic!("OpenXR Error: Extension EXT_DEBUG_UTIL not available");
             } else {
@@ -292,13 +306,19 @@ impl OpenXRHandler {
                 let viewmat = transmat * rotmat;
                 let viewmat = glm::inverse(&viewmat);
 
-                let xr_swapchain_img_idx = self.swapchains[view_idx].acquire_image().unwrap();
-                self.swapchains[view_idx].wait_image(xr::Duration::INFINITE).unwrap();
+                let xr_swapchain_img_idx = self.swapchains[view_idx * 2].acquire_image().unwrap();
+                self.swapchains[view_idx * 2].wait_image(xr::Duration::INFINITE).unwrap();
 
-                let gl_framebuffer = self.gl_framebuffers[view_idx];
+                let xr_depth_swapchain_img_idx = self.swapchains[view_idx * 2 + 1].acquire_image().unwrap();
+                self.swapchains[view_idx * 2 + 1].wait_image(xr::Duration::INFINITE).unwrap();
+                
+                let gl_framebuffer = self.gl_framebuffers[view_idx * 2];
+                let gl_framebuffer_depth = self.gl_framebuffers[view_idx * 2 + 1];
+                
                 unsafe {
                     gl::BindFramebuffer(gl::FRAMEBUFFER, gl_framebuffer);
-                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, self.images[view_idx][xr_swapchain_img_idx as usize], 0);
+                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, self.images[view_idx * 2][xr_swapchain_img_idx as usize], 0);
+                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, self.images[view_idx * 2 + 1][xr_depth_swapchain_img_idx as usize], 0);
 
                     gl::Viewport(0, 0,
                                  (view.recommended_image_rect_width as f32 * self.resolution_multiplier) as GLsizei,
@@ -337,7 +357,8 @@ impl OpenXRHandler {
                 //    }
                 //}
 
-                self.swapchains[view_idx].release_image();
+                self.swapchains[view_idx * 2].release_image();
+                self.swapchains[view_idx * 2 + 1].release_image();
             }
             self.end_frame(state.xr_state.predicted_display_time);;
         }
@@ -358,7 +379,7 @@ impl OpenXRHandler {
                                     .fov(state.views[1].fov)
                                     .sub_image(
                                         openxr::SwapchainSubImage::new()
-                                            .swapchain(&self.swapchains[1])
+                                            .swapchain(&self.swapchains[2])
                                             .image_array_index(0)
                                             .image_rect(openxr::Rect2Di {
                                                 offset: openxr::Offset2Di { x: 0, y: 0 },
