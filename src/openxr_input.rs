@@ -139,8 +139,6 @@ impl OpenXRInput {
             self.snapturn_dir = -1.0;
         }
 
-        println!("prev {}, cur {} = {}", right_x, self.prev_joy_right_x, self.snapturn_dir);
-
         self.prev_joy_right_x = right_x;
 
         //let left_hand_location = self.action_spaces[0].locate(&self.reference_space, predicted_time).unwrap();
