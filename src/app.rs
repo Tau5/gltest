@@ -501,6 +501,10 @@ impl App {
         let maybe_handler = &mut self.openxr_handler;
 
         if let Some(openxr) = maybe_handler {
+            let mut position_bottom = self.player.get_position();
+            let player_size = (self.player.aabb.end - self.player.aabb.start);
+            position_bottom.y -= player_size.y.abs();
+
             openxr.render(
                 &mut self.renderer,
                 &mut self.world,
@@ -509,7 +513,7 @@ impl App {
                 &self.renderer_config,
                 CameraRenderInfo {
                     front: self.player.get_front(),
-                    position: self.player.get_position()
+                    position: position_bottom,
                 },
                 self.xr_rot_offset,
                 &self.openxr_props

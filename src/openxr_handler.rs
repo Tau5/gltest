@@ -343,7 +343,7 @@ impl OpenXRHandler {
 
                 let roomscale = local_pos - ipd;
 
-                let ipd_scaled = ipd * props.ipd_scale;
+                let ipd_scaled = ipd;
 
                 let roomscale_scaled = glm::vec3(
                     roomscale.x * props.roomscale_scale,
@@ -356,7 +356,11 @@ impl OpenXRHandler {
                 //let qua = glm::quat_rotate(&qua, rot_offset, &glm::vec3(0.0, 1.0, 0.0)).normalize();
                 let local_pos_rotated = &turn_mat * &glm::vec3_to_vec4(&local_pos);
 
-                let pos: TVec3<f32> = local_pos_rotated.xyz() + camera_render_info.position;
+                let pos: TVec3<f32> = glm::vec3(
+                    local_pos_rotated.x + camera_render_info.position.x,
+                    local_pos_rotated.y + camera_render_info.position.y,
+                    local_pos_rotated.z + camera_render_info.position.z,
+                );
 
                 let proj = make_proj(state.views[view_idx].fov, 0.01, 100.0);
                 //let proj = glm::perspective_fov(

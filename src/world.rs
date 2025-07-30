@@ -105,6 +105,15 @@ impl World {
             Model::new("models/grass.glb".into(), "grass".into(), material_store),
             material_store,
         );
+        
+        let meter_reference = Object::from_model(
+            glm::vec3(-4.0, -14.0, 5.0),
+            glm::vec3(0.0, 0.0, 0.0),
+            glm::vec3(1.0, 1.0, 1.0),
+            false,
+            Model::new("models/meter_reference.glb".into(), "meter_reference".into(), material_store),
+            material_store
+        );
 
         objects.push(container);
         objects.push(plane);
@@ -115,6 +124,7 @@ impl World {
         objects.push(crank);
         objects.push(kleiner);
         objects.push(grass);
+        objects.push(meter_reference);
 
         objects
     }
