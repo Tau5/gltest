@@ -1,10 +1,11 @@
 use std::any::Any;
 use std::ffi::c_void;
 use std::ptr;
+use fastrand::bool;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use glutin::config::AsRawConfig;
 use glutin::prelude::GlSurface;
-use nalgebra_glm::{proj, Mat4, TMat, TMat4, TVec3, TVec4};
+use nalgebra_glm::{proj, quat, Mat4, TMat, TMat4, TVec3, TVec4};
 use openxr as xr;
 use openxr::{EnvironmentBlendMode, Event, ExtensionSet, FrameStream, FrameWaiter, Instance, OpenGL, SessionState, SessionStateChanged, Space, Swapchain, SystemId, ViewConfigurationView};
 use openxr::sys::create_swapchain;
@@ -13,6 +14,8 @@ use crate::renderer::{CameraRenderInfo, Renderer, RendererConfig};
 use crate::util;
 use crate::world::World;
 use nalgebra_glm as glm;
+use crate::openxr_input::OpenXRInput;
+use crate::openxr_props::OpenxrProps;
 
 struct HandlerFrameState {
     xr_state: xr::FrameState,
@@ -21,7 +24,7 @@ struct HandlerFrameState {
 }
 
 pub struct OpenXRHandler {
-    instance: xr::Instance,
+    pub(crate) instance: xr::Instance,
     pub system: xr::SystemId,
     pub system_properties: xr::SystemProperties,
     pub session: xr::Session<OpenGL>,
@@ -34,12 +37,14 @@ pub struct OpenXRHandler {
     pub reference_space: Space,
     pub view_configuration_views: Vec<ViewConfigurationView>,
     pub do_framecycle: bool,
-    pub resolution_multiplier: f32
+    pub resolution_multiplier: f32,
+    pub input: OpenXRInput,
+    pub world_scale: f32,
 }
 
 impl OpenXRHandler {
     pub fn new(gl_things: &GlThings) -> Self {
-        let resolution_multiplier = 0.25;
+        let resolution_multiplier = 0.5;
         let application_info = xr::ApplicationInfo {
             application_name: "glTest OpenXR Application",
             application_version: 1,
@@ -77,6 +82,12 @@ impl OpenXRHandler {
 
         let space = Self::create_reference_space(&session);
 
+        let input = OpenXRInput::new(&instance, &session);
+
+        session.attach_action_sets(&[
+            &input.action_set
+        ]).unwrap();
+
         Self {
             instance,
             system,
@@ -91,7 +102,9 @@ impl OpenXRHandler {
             view_configuration_views,
             frame_state: None,
             do_framecycle: false,
-            resolution_multiplier
+            resolution_multiplier,
+            input,
+            world_scale: 2.0,
         }
     }
 
@@ -122,7 +135,7 @@ impl OpenXRHandler {
             .copied()
             .find(|&f| f == gl::SRGB8_ALPHA8)
             .unwrap_or(swapchain_formats[0]);
-        
+
         let depth_swapchain_format = swapchain_formats
             .iter()
             .copied()
@@ -162,7 +175,7 @@ impl OpenXRHandler {
 
             images.push(sp_images);
             swapchains.push(swapchain);
-            
+
             images.push(spd_images);
             swapchains.push(swapchain_depth);
         }
@@ -253,6 +266,8 @@ impl OpenXRHandler {
     pub fn wait_frame(&mut self) {
         let frame_state = self.frame_wait.wait().unwrap();
 
+        self.input.poll_actions(&self.session, frame_state.predicted_display_time);
+
         let (view_flags, views) = self.session
             .locate_views(
                 openxr::ViewConfigurationType::PRIMARY_STEREO,
@@ -272,25 +287,77 @@ impl OpenXRHandler {
         self.frame_stream.begin().unwrap();
     }
 
-    pub fn render(&mut self, renderer: &mut Renderer, world: &mut World, glview: &TMat4<GLfloat>, glmodel: &TMat4<GLfloat>, renderer_config: &RendererConfig, camera_render_info: CameraRenderInfo) {
+    pub fn get_quat(&self) -> Option<glm::Quat> {
+        if let Some(state) = &self.frame_state {
+            let qua = glm::quat(
+                state.views[0].pose.orientation.x,
+                state.views[0].pose.orientation.y,
+                state.views[0].pose.orientation.z,
+                state.views[0].pose.orientation.w,
+            );
+
+            return Some(qua)
+        }
+
+        None
+    }
+
+    pub fn render(&mut self, renderer: &mut Renderer, world: &mut World, glview: &TMat4<GLfloat>, glmodel: &TMat4<GLfloat>, renderer_config: &RendererConfig, camera_render_info: CameraRenderInfo, rot_offset: f32, props: &OpenxrProps) {
         self.begin_frame();
+
+        let mut vr_camera_render_info = CameraRenderInfo {
+            position: Default::default(),
+            front: Default::default(),
+        };
+
         if let Some(state) = &self.frame_state {
 
             for (view_idx, view) in self.view_configuration_views.iter().enumerate() {
                 if !state.xr_state.should_render {
                     continue;
                 }
+
                 let qua = glm::quat(
                     state.views[view_idx].pose.orientation.x,
                     state.views[view_idx].pose.orientation.y,
                     state.views[view_idx].pose.orientation.z,
                     state.views[view_idx].pose.orientation.w,
                 );
-                let pos: TVec3<f32> = glm::vec3(
-                    state.views[view_idx].pose.position.x + camera_render_info.position.x,
-                    state.views[view_idx].pose.position.y+ camera_render_info.position.y,
-                    state.views[view_idx].pose.position.z+ camera_render_info.position.z,
+                
+                let turn_mat = glm::rotation(rot_offset, &glm::vec3(0.0, 1.0, 0.0));
+
+
+                let local_pos = glm::vec3(
+                    state.views[view_idx].pose.position.x,
+                    state.views[view_idx].pose.position.y,
+                    state.views[view_idx].pose.position.z,
                 );
+
+                let local_pos_other_eye = glm::vec3(
+                    state.views[(view_idx + 1) % 2].pose.position.x,
+                    state.views[(view_idx + 1) % 2].pose.position.y,
+                    state.views[(view_idx + 1) % 2].pose.position.z,
+                );
+
+                let ipd = local_pos - local_pos_other_eye;
+
+                let roomscale = local_pos - ipd;
+
+                let ipd_scaled = ipd * props.ipd_scale;
+
+                let roomscale_scaled = glm::vec3(
+                    roomscale.x * props.roomscale_scale,
+                    roomscale.y * props.roomscale_scale,
+                    roomscale.z * props.roomscale_scale
+                );
+
+                let local_pos = ipd_scaled + roomscale_scaled;
+
+                //let qua = glm::quat_rotate(&qua, rot_offset, &glm::vec3(0.0, 1.0, 0.0)).normalize();
+                let local_pos_rotated = &turn_mat * &glm::vec3_to_vec4(&local_pos);
+
+                let pos: TVec3<f32> = local_pos_rotated.xyz() + camera_render_info.position;
+
                 let proj = make_proj(state.views[view_idx].fov, 0.01, 100.0);
                 //let proj = glm::perspective_fov(
                 //    state.views[view_idx].fov.angle_up * 2.0,
@@ -298,8 +365,13 @@ impl OpenXRHandler {
                 //    (view.recommended_image_rect_height as f32 * self.resolution_multiplier),
                 //    0.01, 100.0
                 //);
-                let rotmat: TMat4<GLfloat> = glm::quat_to_mat4(&qua);
+                let rotmat = turn_mat * glm::quat_to_mat4(&qua);
                 let transmat: TMat4<GLfloat> = glm::translation(&pos);
+
+                if view_idx == 0 {
+                    vr_camera_render_info.front = glm::quat_euler_angles(&qua);
+                    vr_camera_render_info.position = pos;
+                }
                 let viewmat = transmat * rotmat;
                 let viewmat = glm::inverse(&viewmat);
 
@@ -308,10 +380,10 @@ impl OpenXRHandler {
 
                 let xr_depth_swapchain_img_idx = self.swapchains[view_idx * 2 + 1].acquire_image().unwrap();
                 self.swapchains[view_idx * 2 + 1].wait_image(xr::Duration::INFINITE).unwrap();
-                
+
                 let gl_framebuffer = self.gl_framebuffers[view_idx * 2];
                 let gl_framebuffer_depth = self.gl_framebuffers[view_idx * 2 + 1];
-                
+
                 unsafe {
                     gl::BindFramebuffer(gl::FRAMEBUFFER, gl_framebuffer);
                     gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, self.images[view_idx * 2][xr_swapchain_img_idx as usize], 0);
@@ -325,6 +397,8 @@ impl OpenXRHandler {
                                 (view.recommended_image_rect_width as f32 * self.resolution_multiplier) as GLsizei,
                                 (view.recommended_image_rect_height as f32 * self.resolution_multiplier) as GLsizei);
                 }
+
+
 
                 //let texture = self.images[view_idx][xr_swapchain_img_idx as usize];
                 //let texture = unsafe {

@@ -31,6 +31,9 @@ use crate::openxr_handler::OpenXRHandler;
 use crate::renderer::{CameraRenderInfo, Renderer, RendererConfig};
 use crate::world::World;
 
+use std::f32::consts::TAU as f32_TAU;
+use crate::openxr_props::OpenxrProps;
+
 struct AppState {
     gl_surface: Surface<WindowSurface>,
     // NOTE: Window should be dropped after all resources created using its
@@ -62,7 +65,9 @@ pub struct App {
     world: World,
     exit_state: Result<(), Box<dyn Error>>,
     openxr_handler: Option<OpenXRHandler>,
-    proj: TMat4<GLfloat>
+    proj: TMat4<GLfloat>,
+    pub xr_rot_offset: f32,
+    pub openxr_props: OpenxrProps,
 }
 
 impl App {
@@ -321,6 +326,7 @@ impl App {
             camera_speed: 0.2,
             mouse_sensitivity: 0.01,
             mouse_change_counter: 0,
+            xr_rot_offset: 0.0,
             paused: false,
             player,
             input_manager,
@@ -329,7 +335,8 @@ impl App {
             renderer_config,
             renderer,
             world,
-            proj
+            proj,
+            openxr_props: OpenxrProps::default()
         }
         //      while unsafe { glfwWindowShouldClose(window) == 0 }
     }
@@ -440,12 +447,53 @@ impl App {
             if let Some(light) = self.renderer.light_manager.get_mut_pointlight(0) {}
         }
 
+
+        if let Some(openxr) = &self.openxr_handler {
+           //if openxr.input.action_move.state(&openxr.session,
+           //                            openxr.instance.string_to_path("/user/hand/right").unwrap()).unwrap().current_state {
+           //    move_z += self.camera_speed;
+           //}
+
+            (move_x, move_z) = openxr.input.get_move(&openxr.session);
+            
+            move_x *= 0.1;
+            move_z *= 0.1;
+
+            // DIR * 30º
+            self.xr_rot_offset += -openxr.input.snapturn_dir * f32_TAU * 1.0/4.0 * 1.0/3.0;
+        }
+
         self.player.translate(move_x, move_z, &self.world.objects);
         self.player.apply_gravity(-0.27, &self.world.objects);
-        self.player.rotate_camera(
-            (mouse_x * self.mouse_sensitivity) as f32,
-            -(mouse_y * self.mouse_sensitivity) as f32,
-        );
+
+        if let Some(openxr) = &self.openxr_handler {
+            if (openxr.input.action_roomscale_dec.state(&openxr.session, openxr.input.user_hand_left).unwrap().current_state) {
+                self.openxr_props.roomscale_scale -= 0.1f32;
+            } else if (openxr.input.action_roomscale_inc.state(&openxr.session, openxr.input.user_hand_right).unwrap().current_state) {
+                self.openxr_props.roomscale_scale += 0.1f32;
+            }
+
+            if (openxr.input.action_ipd_dec.state(&openxr.session, openxr.input.user_hand_left).unwrap().current_state) {
+                self.openxr_props.ipd_scale -= 0.1f32;
+            } else if (openxr.input.action_ipd_inc.state(&openxr.session, openxr.input.user_hand_right).unwrap().current_state) {
+                self.openxr_props.ipd_scale += 0.1f32;
+            }
+            
+           if let Some(mut quat) = openxr.get_quat() {
+               let rotmat = glm::rotation(self.xr_rot_offset, &glm::vec3(0.0, 1.0, 0.0)) *glm::quat_to_mat4(&quat)  ;
+               let look_dir = rotmat *
+                   glm::vec4(0.0, 0.0, 1.0, 1.0);
+               //let new_dir = glm::quat_to_mat4(&quat) *
+               //    glm::vec4(1.0, 0.0, 0.0, 1.0);
+               self.player.set_camera_direction(-look_dir.xyz());
+           }
+        } else {
+            self.player.rotate_camera(
+                (mouse_x * self.mouse_sensitivity) as f32,
+                -(mouse_y * self.mouse_sensitivity) as f32,
+            );
+        }
+
         let view = self.player.get_view();
 
         //self.lightpoint_pos.x = GLfloat::sin(time_value as f32) * 2.0 + 8.0;
@@ -462,7 +510,9 @@ impl App {
                 CameraRenderInfo {
                     front: self.player.get_front(),
                     position: self.player.get_position()
-                }
+                },
+                self.xr_rot_offset,
+                &self.openxr_props
             )
         }
         {

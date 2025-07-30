@@ -54,7 +54,7 @@ impl Camera {
         )
     }
 
-    fn get_camera_up(&self) -> glm::Vec3 {
+    pub fn get_camera_up(&self) -> glm::Vec3 {
         glm::normalize(
             &glm::cross(&self.get_camera_front(), &self.get_camera_right())
         )
@@ -78,12 +78,23 @@ impl Camera {
         self.update_direction();
     }
 
+    pub fn set_from_angles(&mut self, jaw: f32, pitch: f32) {
+        self.jaw = jaw;
+        self.pitch = pitch;
+
+        self.update_direction();
+    }
+
     fn update_direction(&mut self) {
         self.direction = glm::vec3(
             GLfloat::cos(self.jaw) * GLfloat::cos(self.pitch),
             GLfloat::sin(self.pitch),
             GLfloat::sin(self.jaw) * GLfloat::cos(self.pitch),
         );
+    }
+
+    pub fn set_direction(&mut self, direction: glm::Vec3) {
+        self.direction = direction;
     }
 
     pub fn get_view(&self) -> glm::TMat4<f32> {

@@ -19,6 +19,8 @@ mod util;
 mod world;
 mod openxr_handler;
 mod renderer;
+mod openxr_input;
+mod openxr_props;
 
 use std::default::Default;
 use crate::app::App;

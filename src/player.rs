@@ -83,4 +83,12 @@ impl Player {
             self.camera.translate(0.0, 0.0, y);
         }
     }
+
+    pub fn set_camera_direction(&mut self, direction: glm::Vec3) {
+        self.camera.set_direction(direction);
+    }
+    
+    pub fn get_camera_up(&self) -> Vec3 {
+        self.camera.get_camera_up()
+    }
 }
