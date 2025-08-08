@@ -96,6 +96,10 @@ impl Renderer {
         for (i, obj) in world.objects.iter().enumerate() {
             obj.render(&self.lighting_shader, &self.material_store);
         }
+        
+        for cont in world.controller_objects.iter() {
+           cont.render(&self.lighting_shader, &self.material_store); 
+        }
 
         //unsafe {
         //    // If depth and stencil tests pass, replace value in stencil

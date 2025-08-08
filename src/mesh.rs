@@ -1,7 +1,9 @@
 use std::ffi::c_void;
 use std::{mem, ptr};
+use std::cell::Ref;
 use std::cmp::Ordering;
 use std::fmt::format;
+use std::path::{Path, PathBuf};
 use fastrand::usize;
 use gl::types::{GLfloat, GLint, GLsizei, GLsizeiptr, GLuint};
 use image::EncodableLayout;
@@ -148,10 +150,35 @@ impl Mesh {
     }
 }
 
+fn find_texture(filename: String, extension: String, basedir: &Path) -> Option<PathBuf> {
+    let file = format!("{}.{}", filename, extension);
+    let in_texture_dir = PathBuf::from(&format!("textures/{}", file));
 
+    if (in_texture_dir.exists()) {
+        return Some(in_texture_dir.to_path_buf())
+    }
+
+    let mut next_to_model = basedir.to_path_buf();
+    next_to_model.push(file);
+
+    if (next_to_model.exists()) {
+        Some(next_to_model)
+    } else {
+        None
+    }
+}
+
+fn get_texture_source(tex: Ref<russimp::material::Texture>, basedir: &Path) -> Option<TextureSource> {
+    if let Some(path) = find_texture(tex.filename.clone(), tex.ach_format_hint.clone(), basedir) {
+        Some(TextureSource::ImagePath(path.to_str().unwrap().to_string()))
+    } else {
+        None
+    }
+}
 
 impl Mesh {
-    pub fn from(mesh: &russimp::mesh::Mesh, scene: &russimp::scene::Scene, material_store: &mut MaterialStore, model_name: String, tns: Matrix4x4) -> Self {
+
+    pub fn from(mesh: &russimp::mesh::Mesh, scene: &russimp::scene::Scene, material_store: &mut MaterialStore, model_name: String, tns: Matrix4x4, basedir: &Path) -> Self {
         let mut vertices = Vec::new();
         let transformation = mat4(
             tns.a1, tns.a2, tns.a3, tns.a4,
@@ -189,15 +216,18 @@ impl Mesh {
 
         let mut diffuse = material.textures.get(&TextureType::Diffuse)
             .and_then(|f|
-                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
+                get_texture_source(f.borrow(), basedir)
+                  //Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
         let specular = material.textures.get(&TextureType::Specular)
             .and_then(|f|
-                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
+                  get_texture_source(f.borrow(), basedir)
+                  //Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
         let emission = material.textures.get(&TextureType::EmissionColor)
             .and_then(|f|
-                  Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
+                  get_texture_source(f.borrow(), basedir)
+                  //Some(TextureSource::ImagePath(format!("textures/{}.{}", f.borrow().filename.clone(), f.borrow().ach_format_hint)))
             );
 
         if diffuse.is_none() {

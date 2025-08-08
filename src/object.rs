@@ -15,7 +15,7 @@ use crate::vao::{TriangleArrayVAO, VAO};
 
 pub struct Object {
     translate: Vec3,
-    rotation: Vec3,
+    rotation: glm::Quat,
     scale: Vec3,
     model: Mat4,
     normal: Mat3,
@@ -39,11 +39,39 @@ impl Object {
         self.scale = scale;
         self.update_model();
     }
+
+    pub fn get_scale(&self) -> Vec3 {
+        self.scale
+    }
+
+    pub fn get_size(&self) -> Vec3 {
+        let mut max = glm::vec3(-f32::INFINITY, -f32::INFINITY, -f32::INFINITY);
+        let mut min = glm::vec3(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+
+        for aabb in &self.aabb {
+            if aabb.start.x < min.x { min.x = aabb.start.x };
+            if aabb.start.x < min.x { min.x = aabb.start.x };
+            if aabb.start.y < min.y { min.y = aabb.start.y };
+            if aabb.end.z < min.z { min.z = aabb.end.z };
+            if aabb.end.y < min.y { min.y = aabb.end.y };
+            if aabb.end.z < min.z { min.z = aabb.end.z };
+
+            if aabb.start.x > max.x { max.x = aabb.start.x };
+            if aabb.start.x > max.x { max.x = aabb.start.x };
+            if aabb.start.y > max.y { max.y = aabb.start.y };
+            if aabb.end.z > max.z { max.z = aabb.end.z };
+            if aabb.end.y > max.y { max.y = aabb.end.y };
+            if aabb.end.z > max.z { max.z = aabb.end.z };
+        }
+
+        (max - min).abs()
+    }
 }
 
 impl Object {
-    pub fn new(translate: Vec3, rotation: Vec3, scale: Vec3, geometry: Box<dyn Geometry>, has_collision: bool) -> Self {
+    pub fn new(translate: Vec3, scale: Vec3, geometry: Box<dyn Geometry>, has_collision: bool) -> Self {
         let base_aabb = geometry.base_aabb();
+        let rotation = glm::Quat::identity();
 
         let mut out = Self {
             translate,
@@ -70,12 +98,13 @@ impl Object {
         self.update_model();
     }
 
-    pub fn set_rotation(&mut self, rotation: Vec3) {
-        self.translate = rotation;
+    pub fn set_rotation(&mut self, rotation: glm::Quat) {
+        self.rotation = rotation;
+        self.update_model();
     }
 
     pub fn set_scale(&mut self, scale: Vec3) {
-        self.translate = scale;
+        self.scale = scale;
         self.update_model();
     }
 
@@ -114,8 +143,9 @@ impl Object {
     }
 
     fn update_model(&mut self) {
-        self.model = glm::identity::<f32, 4>();
-        self.model = glm::translate(&self.model, &self.translate);
+        self.model = glm::Mat4::identity();
+        self.model = glm::translate(&self.model, &self.translate) ;
+        self.model *= glm::quat_to_mat4(&self.rotation);
         self.model = glm::scale(&self.model, &self.scale);
         self.normal = glm::mat4_to_mat3(&glm::inverse_transpose(self.model));
         
@@ -140,7 +170,7 @@ impl Object {
     }
 
     pub fn from_model(translate: Vec3, rotation: Vec3, scale: Vec3, has_collision: bool, model: Model, material_store: &MaterialStore) -> Self {
-        Self::new(translate, rotation, scale, Box::from(model), has_collision)
+        Self::new(translate, scale, Box::from(model), has_collision)
     }
 
 }

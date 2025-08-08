@@ -7,12 +7,14 @@ use crate::lighting::LightManager;
 
 pub struct World {
     pub objects: Vec<Object>,
+    pub controller_objects: Vec<Object>
 }
 
 impl World {
     pub fn new(material_store: &mut MaterialStore) -> Self {
         Self {
             objects: Self::generate_objects(material_store),
+            controller_objects: crate::openxr_input::generate_controller_objects(material_store)
         }
     }
     fn generate_objects(mut material_store: &mut MaterialStore) -> Vec<Object> {
@@ -28,7 +30,6 @@ impl World {
 
         let container = Object::new(
             testcube_pos,
-            glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(2.0, 1.0, 2.0),
             Box::from(Cube::new(material_store.get("container"))),
             true,
@@ -36,7 +37,6 @@ impl World {
 
         let plane = Object::new(
             plane_pos,
-            glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(10.0, 1.0, 10.0),
             Box::from(Cube::new(material_store.get("box"))),
             true,
@@ -44,7 +44,6 @@ impl World {
 
         let beach_sand = Object::new(
             glm::vec3(0.0, -15.0, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(40.0, 0.1, 20.0),
             Box::from(Cube::new(material_store.get("sand"))),
             true,
@@ -52,7 +51,6 @@ impl World {
 
         let beach_waterbed = Object::new(
             glm::vec3(0.0, -20.0, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(70.0, 0.1, 70.0),
             Box::from(Cube::new(material_store.get("sand"))),
             true,
@@ -60,7 +58,6 @@ impl World {
 
         let ocean = Object::new(
             glm::vec3(0.0, -15.1, 0.0),
-            glm::vec3(0.0, 0.0, 0.0),
             glm::vec3(100.0, 0.1, 100.0),
             Box::from(Cube::new(material_store.get("water"))),
             true,
@@ -114,6 +111,7 @@ impl World {
             Model::new("models/meter_reference.glb".into(), "meter_reference".into(), material_store),
             material_store
         );
+
 
         objects.push(container);
         objects.push(plane);

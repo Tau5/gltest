@@ -1,6 +1,11 @@
 use openxr as xr;
 use xr::Space;
+use crate::model::Model;
+use crate::object::Object;
 use crate::openxr_handler::OpenXRHandler;
+use nalgebra_glm as glm;
+use openxr::SpaceLocation;
+use crate::textures::MaterialStore;
 
 pub struct OpenXRInput {
     pub action_set: xr::ActionSet,
@@ -95,14 +100,14 @@ impl OpenXRInput {
         ).unwrap();
 
         let action_spaces = vec![
-            action_right_hand.create_space(
-                session.clone(),
-                user_hand_right,
-                xr::Posef::IDENTITY
-            ).unwrap(),
             action_left_hand.create_space(
                 session.clone(),
                 user_hand_left,
+                xr::Posef::IDENTITY
+            ).unwrap(),
+            action_right_hand.create_space(
+                session.clone(),
+                user_hand_right,
                 xr::Posef::IDENTITY
             ).unwrap()
         ];
@@ -144,6 +149,13 @@ impl OpenXRInput {
         //let left_hand_location = self.action_spaces[0].locate(&self.reference_space, predicted_time).unwrap();
     }
     
+    pub fn get_controller_locations(&self, reference_space: &Space, predicted_time: xr::Time) -> (SpaceLocation, SpaceLocation) {
+        let left_hand_location = self.action_spaces[0].locate(reference_space, predicted_time).unwrap();
+        let right_hand_location = self.action_spaces[1].locate(reference_space, predicted_time).unwrap();
+
+        (left_hand_location, right_hand_location)
+    }
+    
     pub fn get_move(&self, session: &xr::Session<xr::OpenGL>) -> (f32, f32) {
         let x = self.move_x.state(session, self.user_hand_left).unwrap().current_state;
         let y = self.move_y.state(session, self.user_hand_left).unwrap().current_state;
@@ -151,4 +163,26 @@ impl OpenXRInput {
         (x, y)
     }
 
+}
+
+pub fn generate_controller_objects(material_store: &mut MaterialStore) -> Vec<Object> {
+    let controller_left = Object::from_model(
+        glm::vec3(0.0, 0.0, 0.0),
+        glm::vec3(0.0, 0.0, 0.0),
+        glm::vec3(4.0, 4.0, 4.0),
+        false,
+        Model::new("models/cube.glb".into(), "touch2".into(), material_store),
+        material_store
+    );
+
+    let controller_right = Object::from_model(
+        glm::vec3(0.0, 0.0, 0.0),
+        glm::vec3(0.0, 0.0, 0.0),
+        glm::vec3(4.0, 4.0, 4.0),
+        false,
+        Model::new("models/cube.glb".into(), "touch2r".into(), material_store),
+        material_store
+    );
+
+    vec![controller_left, controller_right]
 }

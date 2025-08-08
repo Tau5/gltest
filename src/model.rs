@@ -1,3 +1,4 @@
+use std::path::Path;
 use nalgebra_glm::{Mat3, Mat4};
 use russimp::node::Node;
 use russimp::scene;
@@ -16,19 +17,22 @@ pub struct Model {
 
 impl Model {
 
-    fn process_node(&mut self, node: &Node, scene: &Scene, material_store: &mut MaterialStore, id: String) {
+    fn process_node(&mut self, node: &Node, scene: &Scene, material_store: &mut MaterialStore, id: String, basedir: &Path) {
         for mesh_idx in &node.meshes {
             if let Some(mesh) = scene.meshes.get(*mesh_idx as usize) {
-                self.meshes.push(Mesh::from(mesh, scene, material_store, id.clone(), node.transformation));
+                self.meshes.push(Mesh::from(mesh, scene, material_store, id.clone(), node.transformation, basedir));
             }
         }
 
         for child in node.children.borrow().iter() {
-            self.process_node(child, scene, material_store, id.clone());
+            self.process_node(child, scene, material_store, id.clone(), basedir);
         }
     }
 
     pub fn new(path: String, id: String, material_store: &mut MaterialStore) -> Self {
+        let syspath = std::path::Path::new(&path);
+        let basedir = syspath.parent().unwrap();
+
         let scene = Scene::from_file(&path, vec![
             PostProcess::GenerateNormals,
             PostProcess::Triangulate
@@ -36,11 +40,11 @@ impl Model {
 
         let mut out = Self {
             meshes: Vec::new(),
-            path
+            path: path.clone()
         };
 
         let root = &scene.root.clone().unwrap();
-        out.process_node(root.as_ref(), &scene, material_store, id);
+        out.process_node(root.as_ref(), &scene, material_store, id, basedir);
 
 
 

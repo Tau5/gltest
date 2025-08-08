@@ -5,7 +5,7 @@ use fastrand::bool;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use glutin::config::AsRawConfig;
 use glutin::prelude::GlSurface;
-use nalgebra_glm::{proj, quat, Mat4, TMat, TMat4, TVec3, TVec4};
+use nalgebra_glm::{proj, quat, Mat4, TMat, TMat4, TVec3, TVec4, Vec3};
 use openxr as xr;
 use openxr::{EnvironmentBlendMode, Event, ExtensionSet, FrameStream, FrameWaiter, Instance, OpenGL, SessionState, SessionStateChanged, Space, Swapchain, SystemId, ViewConfigurationView};
 use openxr::sys::create_swapchain;
@@ -17,8 +17,8 @@ use nalgebra_glm as glm;
 use crate::openxr_input::OpenXRInput;
 use crate::openxr_props::OpenxrProps;
 
-struct HandlerFrameState {
-    xr_state: xr::FrameState,
+pub struct HandlerFrameState {
+    pub(crate) xr_state: xr::FrameState,
     view_flags: xr::ViewStateFlags,
     views: Vec<xr::View>,
 }
@@ -326,7 +326,6 @@ impl OpenXRHandler {
                 
                 let turn_mat = glm::rotation(rot_offset, &glm::vec3(0.0, 1.0, 0.0));
 
-
                 let local_pos = glm::vec3(
                     state.views[view_idx].pose.position.x,
                     state.views[view_idx].pose.position.y,
@@ -351,7 +350,7 @@ impl OpenXRHandler {
                     roomscale.z * props.roomscale_scale
                 );
 
-                let local_pos = ipd_scaled + roomscale_scaled;
+                let local_pos: Vec3 = ipd_scaled + roomscale_scaled;
 
                 //let qua = glm::quat_rotate(&qua, rot_offset, &glm::vec3(0.0, 1.0, 0.0)).normalize();
                 let local_pos_rotated = &turn_mat * &glm::vec3_to_vec4(&local_pos);

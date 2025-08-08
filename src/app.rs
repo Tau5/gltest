@@ -32,6 +32,7 @@ use crate::renderer::{CameraRenderInfo, Renderer, RendererConfig};
 use crate::world::World;
 
 use std::f32::consts::TAU as f32_TAU;
+use std::ops::{Add, Mul};
 use crate::openxr_props::OpenxrProps;
 
 struct AppState {
@@ -448,6 +449,8 @@ impl App {
         }
 
 
+        self.update_controller_objects();
+
         if let Some(openxr) = &self.openxr_handler {
            //if openxr.input.action_move.state(&openxr.session,
            //                            openxr.instance.string_to_path("/user/hand/right").unwrap()).unwrap().current_state {
@@ -549,5 +552,67 @@ impl App {
         self.input_manager.update_keys();
     }
 
+    fn update_controller_objects(&mut self) {
+        if let Some(handler) = &self.openxr_handler {
+            if let Some(framestate) = &handler.frame_state {
+                let (cont_left, cont_right) = handler.input.get_controller_locations(&handler.reference_space, framestate.xr_state.predicted_display_time);
 
+                let cont_left_q = glm::quat(
+                    cont_left.pose.orientation.x,
+                    cont_left.pose.orientation.y,
+                    cont_left.pose.orientation.z,
+                    cont_left.pose.orientation.w,
+                );
+
+                let cont_right_q = glm::quat(
+                    cont_right.pose.orientation.x,
+                    cont_right.pose.orientation.y,
+                    cont_right.pose.orientation.z,
+                    cont_right.pose.orientation.w,
+                );
+
+                self.world.controller_objects[0].set_rotation(
+                    cont_left_q
+                );
+
+                let mut position_bottom = self.player.get_position();
+                let player_size = (self.player.aabb.end - self.player.aabb.start);
+                position_bottom.y -= player_size.y.abs();
+
+                let vec_roomscale = glm::vec3(
+                    self.openxr_props.roomscale_scale / 2.0,
+                    self.openxr_props.roomscale_scale / 2.0,
+                    self.openxr_props.roomscale_scale / 2.0,
+                );
+                self.world.controller_objects[0].set_scale(vec_roomscale);
+                self.world.controller_objects[1].set_scale(vec_roomscale);
+
+                let size_l = self.world.controller_objects[0].get_size();
+                let size_r = self.world.controller_objects[1].get_size();
+                self.world.controller_objects[0].set_translate(
+                    glm::vec3(
+                        cont_left.pose.position.x,
+                        cont_left.pose.position.y,
+                        cont_left.pose.position.z
+                    )
+                        .mul(self.openxr_props.roomscale_scale)
+                        .add(&position_bottom)
+                );
+
+                self.world.controller_objects[1].set_rotation(
+                    cont_right_q
+                );
+
+                self.world.controller_objects[1].set_translate(
+                    glm::vec3(
+                        cont_right.pose.position.x,
+                         cont_right.pose.position.y,
+                        cont_right.pose.position.z
+                    )
+                        .mul(self.openxr_props.roomscale_scale)
+                        .add(&position_bottom)
+                )
+            }
+        }
+    }
 }
